@@ -49,6 +49,10 @@
           <span class="info-label">Organization:</span>
           <span class="info-value">By URL path structure</span>
         </div>
+        <div class="info-row">
+          <span class="info-label">Max Recordings:</span>
+          <span class="info-value">{options.maxRecordings?.default === -1 ? 'Unlimited' : options.maxRecordings?.default || 'N/A'}</span>
+        </div>
       </div>
     </PluginSection>
   {/if}

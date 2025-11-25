@@ -31,9 +31,9 @@ export default {
     },
     maxRecordings: {
       type: 'number',
-      default: 1000,
+      default: -1,
       label: 'Max Recordings',
-      description: 'Maximum number of recordings to keep'
+      description: 'Maximum number of recordings to keep (-1 for unlimited)'
     }
   },
   handler: async ({ req, requestBody, config, decision }) => {
