@@ -10,10 +10,9 @@ const STATE_FILE = join(__dirname, '..', 'state.json');
 const DEFAULT_STATE = {
   proxyPort: 8079,
   targetUrl: 'http://localhost:8078',
-  block5xxResponses: false,
   requestHeaders: {},
   plugins: {},
-  pluginOrder: ['logger', 'cors', 'block5xx', 'mock', 'recorder'],
+  pluginOrder: ['logger', 'cors', 'mock', 'recorder'],
   debugLogs: false,
   configSets: [
     {

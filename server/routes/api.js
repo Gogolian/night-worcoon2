@@ -10,24 +10,6 @@ const router = express.Router();
  * @returns {Router} Express router
  */
 export function setupApiRoutes(pluginController, state) {
-  // Get/set the 5xx blocking status
-  router.get('/status', (req, res) => {
-    res.json({ block5xxEnabled: state.block5xxResponses });
-  });
-
-  router.post('/status', (req, res) => {
-    state.block5xxResponses = req.body.block5xxEnabled;
-    
-    // Enable/disable the block5xx plugin
-    pluginController.setPluginEnabled('block5xx', state.block5xxResponses);
-    
-    // Save state to disk
-    saveState(state);
-    
-    console.log(`5xx blocking ${state.block5xxResponses ? 'enabled' : 'disabled'}`);
-    res.json({ block5xxEnabled: state.block5xxResponses });
-  });
-
   // Get configuration
   router.get('/config', (req, res) => {
     res.json({

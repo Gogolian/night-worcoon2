@@ -90,7 +90,7 @@ app.all('*', async (req, res) => {
   const decision = await pluginController.processRequest({
     req,
     requestBody: req.rawBody || Buffer.alloc(0),
-    config: { block5xxEnabled: state.block5xxResponses }
+    config: {}
   });
   debugLog(`🔌 [${req.method}] Plugin decision:`, decision.action);
 

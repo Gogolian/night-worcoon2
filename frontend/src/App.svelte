@@ -8,7 +8,6 @@
   import Settings from './views/Settings.svelte';
   import LoggerPlugin from './views/plugins/LoggerPlugin.svelte';
   import CorsPlugin from './views/plugins/CorsPlugin.svelte';
-  import Block5xxPlugin from './views/plugins/Block5xxPlugin.svelte';
   import MockPlugin from './views/plugins/MockPlugin.svelte';
   import RecorderPlugin from './views/plugins/RecorderPlugin.svelte';
   import { currentRoute, routes, allRoutes } from './stores/router.js';
@@ -22,7 +21,6 @@
   const pluginComponents = {
     logger: LoggerPlugin,
     cors: CorsPlugin,
-    block5xx: Block5xxPlugin,
     mock: MockPlugin,
     recorder: RecorderPlugin
   };
@@ -30,7 +28,7 @@
   $: sidebarItems = [
     { ...routes.dashboard, active: routes.dashboard.id === $currentRoute },
     { ...routes.plugins, active: routes.plugins.id === $currentRoute },
-    // Add enabled plugins under Plugins section
+    // Add all plugins under Plugins section (enabled and disabled)
     ...Object.values($allRoutes)
       .filter(route => route.isPlugin)
       .map(route => {
@@ -40,7 +38,8 @@
         return {
           ...route,
           label: order ? `${order}. ${route.label}` : route.label,
-          active: route.id === $currentRoute
+          active: route.id === $currentRoute,
+          enabled: plugin?.enabled ?? true
         };
       }),
     { ...routes.settings, active: routes.settings.id === $currentRoute }
@@ -89,6 +88,7 @@
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+    z-index: 1;
   }
 
   :global(html, body) {
@@ -116,6 +116,7 @@
     display: flex;
     flex: 1;
     overflow: hidden;
+    z-index: 0;
   }
 
   /* Scrollbar styling */

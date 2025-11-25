@@ -1,6 +1,6 @@
-# Night Worcoon2 - Proxy Server with Frontend Control
+# Night Worcoon2 - HTTP/HTTPS Proxy Server
 
-A proxy server that listens on port 8079 and forwards requests to port 8078, with optional 5xx error blocking controlled via a Svelte frontend.
+A minimalistic proxy server for development debugging and testing, with plugin system and web-based control interface.
 
 ## Project Structure
 
@@ -20,11 +20,15 @@ night-worcoon2/
 
 ## Features
 
-- **Proxy Server**: Listens on port 8079, forwards requests to port 8078
-- **5xx Error Blocking**: Optional blocking of responses with 5xx status codes
-- **Web UI**: Svelte-based frontend to toggle 5xx blocking on/off
-- **Status API**: RESTful endpoints to check and update blocking status
-- **CORS Support**: Cross-origin requests enabled for frontend
+- **Proxy Server**: HTTP/HTTPS proxy with configurable port and target
+- **Plugin System**: Modular plugins with execution order control
+  - **Logger**: Request/response logging
+  - **CORS**: Cross-origin request handling
+  - **Mock**: Mock response injection
+  - **Recorder**: Request/response recording and replay
+- **Web UI**: Svelte-based frontend for configuration and monitoring
+- **Configuration Sets**: Save and switch between different proxy configurations
+- **RESTful API**: Full control via HTTP endpoints
 
 ## Setup Instructions
 
@@ -77,52 +81,55 @@ The frontend will be available at `http://localhost:5173`
 
 ## API Endpoints
 
-### GET `/api/status`
-Returns the current status of 5xx blocking.
+### GET `/__api/plugins`
+Returns all plugins with their configuration and status.
 
-**Response:**
-```json
-{
-  "block5xxEnabled": false
-}
-```
+### POST `/__api/plugins/:name`
+Enable or disable a specific plugin.
 
-### POST `/api/status`
-Updates the 5xx blocking status.
+### POST `/__api/plugins/order`
+Update plugin execution order.
 
-**Request Body:**
-```json
-{
-  "block5xxEnabled": true
-}
-```
+### GET `/__api/config`
+Get current proxy configuration.
 
-**Response:**
-```json
-{
-  "block5xxEnabled": true
-}
-```
+### POST `/__api/config`
+Update proxy configuration.
+
+### GET `/__api/config-sets`
+Get all saved configuration sets.
+
+### POST `/__api/config-sets`
+Create a new configuration set.
+
+### POST `/__api/config-sets/:id/activate`
+Switch to a different configuration set.
 
 ## Usage
 
-1. **Start the backend service** on port 8078 (your existing service)
+1. **Start the target service** (the service you want to proxy)
 2. **Start the proxy server** (`npm start` in `/server`)
-3. **Open the frontend** (`npm run dev` in `/frontend`)
-4. **Toggle the checkbox** to enable/disable 5xx error blocking
-5. **Send requests** to `http://localhost:8079` - they will be proxied to `http://localhost:8078`
+3. **Open the web interface** (`npm run dev` in `/frontend`)
+4. **Configure plugins** - enable/disable and configure plugin options
+5. **Configure target** - set target URL and request headers in Settings
+6. **Send requests** to the proxy port - they will be processed through plugins and forwarded to the target
 
-When 5xx blocking is enabled:
-- If the target service returns a 5xx error, the proxy will return a 502 (Bad Gateway) with a custom error message
-- When disabled, all responses pass through unchanged
+### Plugin System
+
+Plugins process requests and responses in order:
+1. **Logger** - Logs all requests and responses
+2. **CORS** - Handles CORS headers
+3. **Mock** - Can return mock responses instead of proxying
+4. **Recorder** - Records and replays request/response pairs
 
 ## Request Flow
 
 ```
-Client Request → Port 8079 (Proxy) → Port 8078 (Target Service)
-                                    ↓
-Client Response ← Port 8079 (Proxy) ← Port 8078 (Response)
-                  (5xx blocked if enabled)
+Client Request → Proxy Server → Plugins (Request Phase) → Target Service
+                                  ↓ (Logger, CORS, Mock, Recorder)
+                                  
+Client Response ← Proxy Server ← Plugins (Response Phase) ← Target Service
+                                  ↓ (Recorder, Logger)
 ```
 
 ## Development

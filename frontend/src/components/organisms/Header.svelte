@@ -5,7 +5,7 @@
 <header class="header-organism">
   <div class="header-content">
     <div class="header-left">
-      <h2 class="header-title">Night Worcoon2</h2>
+      <h2 class="header-title">NWC2</h2>
     </div>
     <div class="header-right">
       <nav class="header-nav">
@@ -14,6 +14,7 @@
     </div>
   </div>
 </header>
+
 
 <style>
   .header-organism {
@@ -25,7 +26,6 @@
   }
 
   .header-content {
-    max-width: 1400px;
     margin: 0 auto;
     padding: 0 16px;
     display: flex;
@@ -40,11 +40,11 @@
   }
 
   .header-title {
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 700;
     color: #64b5f6;
     margin: 0;
-    letter-spacing: 0.5px;
+    letter-spacing: 1px;
   }
 
   .header-right {
@@ -56,4 +56,5 @@
     display: flex;
     gap: 20px;
   }
+
 </style>

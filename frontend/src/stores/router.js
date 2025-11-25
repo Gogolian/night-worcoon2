@@ -1,5 +1,5 @@
 import { writable, derived } from 'svelte/store';
-import { enabledPlugins } from './plugins.js';
+import { plugins } from './plugins.js';
 
 export const currentRoute = writable('dashboard');
 
@@ -31,15 +31,14 @@ export const routes = {
 const pluginIcons = {
   logger: '📝',
   cors: '🌐',
-  block5xx: '🛡️',
   mock: '🎭',
   recorder: '📼'
 };
 
-// Dynamically create plugin routes from enabled plugins
-export const dynamicRoutes = derived(enabledPlugins, $enabledPlugins => {
+// Dynamically create plugin routes from all plugins (enabled and disabled)
+export const dynamicRoutes = derived(plugins, $plugins => {
   const pluginRoutes = {};
-  $enabledPlugins.forEach(plugin => {
+  $plugins.forEach(plugin => {
     pluginRoutes[`plugin-${plugin.name}`] = {
       id: `plugin-${plugin.name}`,
       label: plugin.name,
@@ -47,7 +46,8 @@ export const dynamicRoutes = derived(enabledPlugins, $enabledPlugins => {
       path: `/plugin/${plugin.name}`,
       isPlugin: true,
       pluginName: plugin.name,
-      order: plugin.order
+      order: plugin.order,
+      enabled: plugin.enabled
     };
   });
   return pluginRoutes;

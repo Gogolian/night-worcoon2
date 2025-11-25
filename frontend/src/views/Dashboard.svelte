@@ -1,9 +1,7 @@
 <script>
   import StatusMessage from '../components/molecules/StatusMessage.svelte';
-  import CheckboxGroup from '../components/molecules/CheckboxGroup.svelte';
   import Card from '../components/molecules/Card.svelte';
-  import Button from '../components/atoms/Button.svelte';
-  import { proxyStatus, fetchProxyStatus, updateProxyStatus, checkServerHealth } from '../stores/proxy.js';
+  import { proxyStatus, fetchProxyStatus, checkServerHealth } from '../stores/proxy.js';
   import { onMount, onDestroy } from 'svelte';
 
   let healthCheckInterval;
@@ -62,14 +60,6 @@
       switchingSet = false;
     }
   }
-
-  async function handleToggle(e) {
-    await updateProxyStatus(!$proxyStatus.block5xxEnabled);
-  }
-
-  function clearError() {
-    proxyStatus.update(s => ({ ...s, error: null }));
-  }
 </script>
 
 <div class="dashboard-view">
@@ -105,37 +95,6 @@
       {/if}
     </Card>
 
-    <Card title="5xx Response Blocking">
-      {#if $proxyStatus.error && $proxyStatus.serverOnline}
-        <StatusMessage type="error" onDismiss={clearError}>
-          {$proxyStatus.error}
-        </StatusMessage>
-      {/if}
-
-      <div class="status-info">
-        <p class="status-label">Status:</p>
-        <p class="status-value">
-          {$proxyStatus.loading ? 'Loading...' : ($proxyStatus.block5xxEnabled ? '🟢 Active' : '🔴 Inactive')}
-        </p>
-      </div>
-
-      <div class="control-section">
-        <CheckboxGroup
-          id="block5xx"
-          label="Block 5xx Server Errors"
-          checked={$proxyStatus.block5xxEnabled}
-          disabled={$proxyStatus.loading}
-          on:change={handleToggle}
-        />
-      </div>
-
-      <div class="info-box">
-        <p>
-          When enabled, intercepts 5xx errors from target and returns 502 Bad Gateway.
-        </p>
-      </div>
-    </Card>
-
     <Card title="Quick Stats">
       <div class="stat-item">
         <span class="stat-label">Server:</span>
@@ -151,10 +110,7 @@
         <span class="stat-label">Target:</span>
         <span class="stat-value">8078</span>
       </div>
-      <div class="stat-item">
-        <span class="stat-label">Blocking:</span>
-        <span class="stat-value">{$proxyStatus.block5xxEnabled ? 'On' : 'Off'}</span>
-      </div>
+
     </Card>
   </div>
 </div>
@@ -186,50 +142,6 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
     gap: 10px;
-  }
-
-  .status-info {
-    margin-bottom: 8px;
-    padding: 8px;
-    background-color: #0f1535;
-    border-left: 3px solid #3b82f6;
-  }
-
-  .status-label {
-    margin: 0 0 2px 0;
-    color: #9ca3af;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-  }
-
-  .status-value {
-    margin: 0;
-    font-size: 13px;
-    font-weight: 600;
-    color: #60a5fa;
-  }
-
-  .control-section {
-    margin: 8px 0;
-    padding: 8px;
-    background-color: #0f1535;
-    border-left: 3px solid #2563eb;
-  }
-
-  .info-box {
-    margin-top: 8px;
-    padding: 6px 8px;
-    background-color: #0f1535;
-    border-left: 3px solid #3b82f6;
-    color: #93c5fd;
-  }
-
-  .info-box p {
-    margin: 0;
-    font-size: 11px;
-    line-height: 1.4;
   }
 
   .stat-item {

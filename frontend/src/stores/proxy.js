@@ -1,7 +1,6 @@
 import { writable } from 'svelte/store';
 
 export const proxyStatus = writable({
-  block5xxEnabled: false,
   loading: false,
   error: null,
   serverOnline: true
@@ -9,7 +8,7 @@ export const proxyStatus = writable({
 
 export async function checkServerHealth() {
   try {
-    const response = await fetch('/__api/status', {
+    const response = await fetch('/__api/plugins', {
       method: 'GET',
       signal: AbortSignal.timeout(2000)
     });
@@ -37,13 +36,10 @@ export async function checkServerHealth() {
 export async function fetchProxyStatus() {
   proxyStatus.update(s => ({ ...s, loading: true }));
   try {
-    const response = await fetch('/__api/status');
-    const data = await response.json();
+    await checkServerHealth();
     proxyStatus.update(s => ({
       ...s,
-      block5xxEnabled: data.block5xxEnabled,
       loading: false,
-      serverOnline: true,
       error: null
     }));
   } catch (err) {
@@ -52,33 +48,6 @@ export async function fetchProxyStatus() {
       loading: false,
       serverOnline: false,
       error: `Failed to fetch status: ${err.message}`
-    }));
-  }
-}
-
-export async function updateProxyStatus(enabled) {
-  proxyStatus.update(s => ({ ...s, loading: true, error: null }));
-  try {
-    const response = await fetch('/__api/status', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ block5xxEnabled: enabled }),
-    });
-    const data = await response.json();
-    proxyStatus.update(s => ({
-      ...s,
-      block5xxEnabled: data.block5xxEnabled,
-      loading: false,
-      serverOnline: true
-    }));
-  } catch (err) {
-    proxyStatus.update(s => ({
-      ...s,
-      loading: false,
-      serverOnline: false,
-      error: `Failed to update status: ${err.message}`
     }));
   }
 }
