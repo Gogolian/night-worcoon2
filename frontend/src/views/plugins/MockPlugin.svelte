@@ -20,8 +20,21 @@
 
   onMount(async () => {
     await loadAvailableSets();
-    await loadRuleSet('active');
+    await loadServerConfig();
+    await loadActiveConfig();
   });
+
+  async function loadServerConfig() {
+    try {
+      const response = await fetch('/__api/config');
+      const config = await response.json();
+      if (config.activeRulesSet) {
+        currentSetName = config.activeRulesSet;
+      }
+    } catch (err) {
+      console.error('Failed to load server config:', err);
+    }
+  }
 
   async function handleToggle() {
     if (plugin) {
@@ -36,6 +49,21 @@
       availableSets = data.sets || [];
     } catch (err) {
       console.error('Failed to load rule sets:', err);
+    }
+  }
+
+  async function loadActiveConfig() {
+    try {
+      const response = await fetch(`/__api/rules/sets/${currentSetName}`);
+      const data = await response.json();
+      rules = data.rules || [];
+      fallback = data.fallback || 'PASS';
+      fallback_fallback = data.fallback_fallback || 'PASS';
+      recordingsFolder = data.recordingsFolder || 'active';
+      originalState = JSON.stringify({ rules, fallback, fallback_fallback, recordingsFolder });
+      hasUnsavedChanges = false;
+    } catch (err) {
+      console.error('Failed to load active config:', err);
     }
   }
 
@@ -57,7 +85,7 @@
     }
 
     try {
-      const response = await fetch(`/__api/rules/${name === 'active' ? 'active' : `sets/${name}`}`);
+      const response = await fetch(`/__api/rules/sets/${name}`);
       const data = await response.json();
       rules = data.rules || [];
       fallback = data.fallback || 'PASS';
@@ -66,6 +94,13 @@
       currentSetName = name;
       originalState = JSON.stringify({ rules, fallback, fallback_fallback, recordingsFolder });
       hasUnsavedChanges = false;
+      
+      // Save the active rules set to state
+      await fetch('/__api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activeRulesSet: name })
+      });
     } catch (err) {
       console.error('Failed to load rule set:', err);
     }
@@ -73,7 +108,7 @@
 
   async function saveActiveRuleSet() {
     try {
-      const response = await fetch('/__api/rules/active', {
+      const response = await fetch(`/__api/rules/sets/${currentSetName}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rules, fallback, fallback_fallback, recordingsFolder })
@@ -81,17 +116,14 @@
       if (response.ok) {
         originalState = JSON.stringify({ rules, fallback, fallback_fallback, recordingsFolder });
         hasUnsavedChanges = false;
-        alert('Active rules saved successfully');
       }
     } catch (err) {
-      console.error('Failed to save active rules:', err);
-      alert('Failed to save active rules');
+      console.error('Failed to save rules:', err);
     }
   }
 
   async function saveRuleSetAs(name) {
     if (!name.trim()) {
-      alert('Please enter a name for the rule set');
       return;
     }
 
@@ -103,11 +135,9 @@
       });
       if (response.ok) {
         await loadAvailableSets();
-        alert(`Rule set "${name}" saved successfully`);
       }
     } catch (err) {
       console.error('Failed to save rule set:', err);
-      alert('Failed to save rule set');
     }
   }
 

@@ -1,6 +1,16 @@
 {
-  "rules": [],
-  "fallback": "RET_REC",
-  "fallback_fallback": "PASS",
+  "rules": [
+    {
+      "method": [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "url": "",
+      "action": "RET_REC"
+    }
+  ],
+  "fallback": "PASS",
+  "fallback_fallback": "500",
   "recordingsFolder": "active"
 }

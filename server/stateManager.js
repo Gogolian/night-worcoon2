@@ -9,8 +9,6 @@ const STATE_FILE = join(__dirname, '..', 'state.json');
 
 const DEFAULT_STATE = {
   proxyPort: 8079,
-  targetUrl: 'http://localhost:8078',
-  requestHeaders: {},
   plugins: {},
   pluginOrder: ['logger', 'cors', 'mock', 'recorder'],
   debugLogs: false,
@@ -22,7 +20,8 @@ const DEFAULT_STATE = {
       requestHeaders: {}
     }
   ],
-  activeConfigSet: 'default'
+  activeConfigSet: 'default',
+  activeRulesSet: 'active'
 };
 
 /**
@@ -33,8 +32,44 @@ export function loadState() {
   try {
     if (existsSync(STATE_FILE)) {
       const data = readFileSync(STATE_FILE, 'utf8');
-      const state = JSON.parse(data);
+      let state = JSON.parse(data);
       console.log('✓ State loaded from disk');
+      
+      // Migration: Remove old root-level targetUrl and requestHeaders if they exist
+      if (state.targetUrl !== undefined || state.requestHeaders !== undefined) {
+        console.log('⚠️  Migrating old state format...');
+        delete state.targetUrl;
+        delete state.requestHeaders;
+        saveState(state);
+        console.log('✓ State migrated to new format');
+      }
+      
+      // Migration: Remove pluginConfigs and add activeRulesSet
+      if (state.pluginConfigs !== undefined) {
+        console.log('⚠️  Migrating plugin configs to separate files...');
+        delete state.pluginConfigs;
+        if (!state.activeRulesSet) {
+          state.activeRulesSet = 'active';
+        }
+        saveState(state);
+        console.log('✓ Plugin configs migrated');
+      }
+      
+      // Ensure configSets exists and has at least one entry
+      if (!state.configSets || state.configSets.length === 0) {
+        console.log('⚠️  No config sets found, creating default...');
+        state.configSets = DEFAULT_STATE.configSets;
+        state.activeConfigSet = DEFAULT_STATE.activeConfigSet;
+        saveState(state);
+      }
+      
+      // Ensure activeConfigSet is valid
+      if (!state.activeConfigSet || !state.configSets.find(s => s.id === state.activeConfigSet)) {
+        console.log('⚠️  Invalid active config set, using first available...');
+        state.activeConfigSet = state.configSets[0].id;
+        saveState(state);
+      }
+      
       return { ...DEFAULT_STATE, ...state };
     }
   } catch (error) {
@@ -68,4 +103,18 @@ export function updateState(currentState, updates) {
   const newState = { ...currentState, ...updates };
   saveState(newState);
   return newState;
+}
+
+/**
+ * Get the currently active config set
+ * @param {object} state - State object
+ * @returns {object} Active config set or default
+ */
+export function getActiveConfigSet(state) {
+  if (!state.configSets || state.configSets.length === 0) {
+    return DEFAULT_STATE.configSets[0];
+  }
+  
+  const activeSet = state.configSets.find(s => s.id === state.activeConfigSet);
+  return activeSet || state.configSets[0];
 }

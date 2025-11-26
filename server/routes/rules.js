@@ -24,7 +24,8 @@ export function setupRulesRoutes(pluginController, state) {
   // Get active rule set
   router.get('/active', (req, res) => {
     try {
-      const activePath = join(RULES_DIR, 'active.json');
+      const activeRulesSet = state.activeRulesSet || 'active';
+      const activePath = join(RULES_DIR, `${activeRulesSet}.json`);
       if (existsSync(activePath)) {
         const data = readFileSync(activePath, 'utf8');
         res.json(JSON.parse(data));
@@ -41,25 +42,16 @@ export function setupRulesRoutes(pluginController, state) {
   // Save active rule set
   router.post('/active', async (req, res) => {
     try {
-      const activePath = join(RULES_DIR, 'active.json');
+      const activeRulesSet = state.activeRulesSet || 'active';
+      const activePath = join(RULES_DIR, `${activeRulesSet}.json`);
       writeFileSync(activePath, JSON.stringify(req.body, null, 2), 'utf8');
       
-      // Update plugin controller configuration dynamically
+      // Update plugin controller configuration dynamically (hot reload)
       if (pluginController) {
         pluginController.setPluginConfig('mock', req.body);
       }
       
-      // Update state and save to disk
-      if (state) {
-        if (!state.pluginConfigs) state.pluginConfigs = {};
-        state.pluginConfigs.mock = req.body;
-        
-        // Import saveState dynamically to avoid circular dependencies
-        const { saveState } = await import('../stateManager.js');
-        saveState(state);
-      }
-      
-      console.log('✓ Mock plugin configuration updated (no restart needed)');
+      console.log(`✓ Rules saved to ${activeRulesSet}.json and applied (no restart needed)`);
       res.json({ success: true, message: 'Active rules saved and applied' });
     } catch (err) {
       console.error('Error saving active rules:', err);
@@ -101,11 +93,18 @@ export function setupRulesRoutes(pluginController, state) {
   router.post('/sets/:name', (req, res) => {
     try {
       const { name } = req.params;
-      if (name === 'active') {
-        return res.status(400).json({ error: 'Cannot use "active" as a custom name' });
-      }
       const filePath = join(RULES_DIR, `${name}.json`);
       writeFileSync(filePath, JSON.stringify(req.body, null, 2), 'utf8');
+      
+      // If this is the currently active rule set, also update the plugin config
+      const activeRulesSet = state.activeRulesSet || 'active';
+      if (name === activeRulesSet && pluginController) {
+        pluginController.setPluginConfig('mock', req.body);
+        console.log(`✓ Rules saved to ${name}.json and applied (no restart needed)`);
+      } else {
+        console.log(`✓ Rules saved to ${name}.json`);
+      }
+      
       res.json({ success: true, message: `Rule set "${name}" saved` });
     } catch (err) {
       console.error('Error saving rule set:', err);

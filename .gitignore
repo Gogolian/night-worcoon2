@@ -10,6 +10,7 @@ build/
 # State and recordings
 state.json
 recordings/
+rules/
 
 # IDE
 .idea/

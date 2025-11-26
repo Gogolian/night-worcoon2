@@ -1,5 +1,11 @@
 import express from 'express';
-import { saveState } from '../stateManager.js';
+import { saveState, getActiveConfigSet } from '../stateManager.js';
+import { readFileSync, existsSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const router = express.Router();
 
@@ -12,43 +18,70 @@ const router = express.Router();
 export function setupApiRoutes(pluginController, state) {
   // Get configuration
   router.get('/config', (req, res) => {
+    const activeSet = getActiveConfigSet(state);
     res.json({
       proxyPort: state.proxyPort || 8079,
-      targetUrl: state.targetUrl || 'http://localhost:8078',
-      requestHeaders: state.requestHeaders || {},
-      debugLogs: state.debugLogs || false
+      targetUrl: activeSet.targetUrl,
+      requestHeaders: activeSet.requestHeaders || {},
+      debugLogs: state.debugLogs || false,
+      activeRulesSet: state.activeRulesSet || 'active'
     });
   });
 
   // Update configuration
   router.post('/config', (req, res) => {
-    const { proxyPort, targetUrl, requestHeaders, debugLogs, autoRestart } = req.body;
+    const { proxyPort, targetUrl, requestHeaders, debugLogs, autoRestart, activeRulesSet } = req.body;
     
     if (proxyPort !== undefined) {
       state.proxyPort = parseInt(proxyPort, 10);
     }
     
-    if (targetUrl !== undefined) {
-      state.targetUrl = targetUrl;
-      console.log(`✓ Target URL updated to: ${targetUrl} (no restart needed)`);
-    }
+    // Update active config set values
+    const activeSet = getActiveConfigSet(state);
+    const setIndex = state.configSets.findIndex(s => s.id === activeSet.id);
     
-    if (requestHeaders !== undefined) {
-      state.requestHeaders = requestHeaders;
-      console.log(`✓ Request headers updated (no restart needed)`);
+    if (setIndex !== -1) {
+      if (targetUrl !== undefined) {
+        state.configSets[setIndex].targetUrl = targetUrl;
+        console.log(`✓ Target URL updated to: ${targetUrl} (no restart needed)`);
+      }
+      
+      if (requestHeaders !== undefined) {
+        state.configSets[setIndex].requestHeaders = requestHeaders;
+        console.log(`✓ Request headers updated (no restart needed)`);
+      }
     }
     
     if (debugLogs !== undefined) {
       state.debugLogs = debugLogs;
     }
     
+    if (activeRulesSet !== undefined) {
+      state.activeRulesSet = activeRulesSet;
+      console.log(`✓ Active rules set changed to: ${activeRulesSet}`);
+      
+      // Reload mock plugin configuration from the new active rule set
+      try {
+        const rulesPath = join(__dirname, '..', '..', 'rules', `${activeRulesSet}.json`);
+        if (existsSync(rulesPath)) {
+          const data = readFileSync(rulesPath, 'utf8');
+          const rules = JSON.parse(data);
+          pluginController.setPluginConfig('mock', rules);
+          console.log(`✓ Mock plugin reloaded with rules from ${activeRulesSet}.json`);
+        }
+      } catch (err) {
+        console.error(`Failed to reload mock plugin config from ${activeRulesSet}.json:`, err.message);
+      }
+    }
+    
     saveState(state);
     
+    const updatedSet = getActiveConfigSet(state);
     res.json({
       success: true,
       proxyPort: state.proxyPort,
-      targetUrl: state.targetUrl,
-      requestHeaders: state.requestHeaders,
+      targetUrl: updatedSet.targetUrl,
+      requestHeaders: updatedSet.requestHeaders,
       debugLogs: state.debugLogs,
       message: 'Configuration saved and applied (no restart needed)'
     });
@@ -157,12 +190,8 @@ export function setupApiRoutes(pluginController, state) {
       return res.status(404).json({ error: 'Config set not found' });
     }
     
-    // Update active set
+    // Update active set (no longer copying values to root)
     state.activeConfigSet = id;
-    
-    // Apply the config set's settings to current state
-    state.targetUrl = configSet.targetUrl;
-    state.requestHeaders = configSet.requestHeaders;
     
     saveState(state);
     

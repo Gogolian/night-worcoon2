@@ -3,35 +3,6 @@
     {
       "method": [
         "GET",
-        "POST",
-        "PATCH",
-        "PUT"
-      ],
-      "url": "",
-      "action": "RET_REC"
-    },
-    {
-      "method": [
-        "GET",
-        "DELETE",
-        "PUT"
-      ],
-      "url": "",
-      "action": "RET_REC"
-    },
-    {
-      "method": [
-        "GET",
-        "OPTIONS",
-        "DELETE",
-        "PUT"
-      ],
-      "url": "",
-      "action": "RET_REC"
-    },
-    {
-      "method": [
-        "GET",
         "HEAD",
         "OPTIONS"
       ],
@@ -39,5 +10,7 @@
       "action": "RET_REC"
     }
   ],
-  "fallback": "PASS"
+  "fallback": "RET_REC",
+  "fallback_fallback": "500",
+  "recordingsFolder": "active"
 }

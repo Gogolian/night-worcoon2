@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 import { pluginController } from './pluginController.js';
 import { setupApiRoutes } from './routes/api.js';
 import { setupRulesRoutes } from './routes/rules.js';
-import { loadState, saveState } from './stateManager.js';
+import { loadState, saveState, getActiveConfigSet } from './stateManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -44,25 +44,15 @@ if (state.plugins) {
   });
 }
 
-// Apply plugin configurations from saved state
-if (state.pluginConfigs) {
-  Object.entries(state.pluginConfigs).forEach(([name, config]) => {
-    try {
-      pluginController.setPluginConfig(name, config);
-    } catch (err) {
-      console.error(`Failed to restore plugin ${name} config:`, err.message);
-    }
-  });
-}
-
 // Load active rules for mock plugin on startup
 try {
-  const activePath = join(__dirname, '..', 'rules', 'active.json');
+  const activeRulesSet = state.activeRulesSet || 'active';
+  const activePath = join(__dirname, '..', 'rules', `${activeRulesSet}.json`);
   if (existsSync(activePath)) {
     const data = readFileSync(activePath, 'utf8');
     const activeRules = JSON.parse(data);
     pluginController.setPluginConfig('mock', activeRules);
-    console.log('✓ Loaded active mock rules');
+    console.log(`✓ Loaded mock rules from "${activeRulesSet}.json"`);
   }
 } catch (err) {
   console.error('Failed to load active rules on startup:', err.message);
@@ -155,10 +145,11 @@ app.all('*', async (req, res) => {
     Object.assign(mergedHeaders, decision.modifyRequest.headers);
   }
   
-  // Apply custom request headers from config (only if not already set)
-  if (state.requestHeaders) {
-    debugLog(`📋 [${req.method}] Applying config request headers:`, state.requestHeaders);
-    Object.assign(mergedHeaders, state.requestHeaders);
+  // Apply custom request headers from active config set
+  const activeConfigSet = getActiveConfigSet(state);
+  if (activeConfigSet.requestHeaders) {
+    debugLog(`📋 [${req.method}] Applying config request headers:`, activeConfigSet.requestHeaders);
+    Object.assign(mergedHeaders, activeConfigSet.requestHeaders);
   } else {
     debugLog(`📋 [${req.method}] No config request headers to apply`);
   }
@@ -170,9 +161,9 @@ app.all('*', async (req, res) => {
   req.pluginDecision = decision;
   req.bufferedBody = req.rawBody;
 
-  // Proxy options
+  // Proxy options - use active config set's target URL
   const proxyOptions = {
-    target: state.targetUrl || 'http://localhost:8078',
+    target: activeConfigSet.targetUrl || 'http://localhost:8078',
     changeOrigin: true,
     selfHandleResponse: true,
     followRedirects: true,
@@ -285,9 +276,10 @@ proxy.on('proxyRes', (proxyRes, req, res) => {
 });
 
 const PORT = state.proxyPort || 8079;
-const TARGET_URL = state.targetUrl || 'http://localhost:8078';
+const activeConfigSet = getActiveConfigSet(state);
 
 app.listen(PORT, () => {
   console.log(`Proxy server listening on port ${PORT}`);
-  console.log(`Forwarding requests to ${TARGET_URL}`);
+  console.log(`Active config set: ${activeConfigSet.name}`);
+  console.log(`Forwarding requests to ${activeConfigSet.targetUrl}`);
 });
