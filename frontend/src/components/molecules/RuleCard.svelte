@@ -55,10 +55,13 @@
     <input 
       type="text" 
       class="url-input"
-      placeholder="e.g., /api/users or /api/*/details"
+      placeholder="e.g., /bff/cms or cms/config or bff/:id/details"
       value={rule.url}
       on:input={(e) => onUrlChange(index, e)}
     />
+    <span class="field-hint">
+      Matches any URL containing this pattern. CAN BE PART OF THE URL. Use <code>:param</code> for wildcards (e.g., <code>/api/:id/user</code> but must be exact URL.)
+    </span>
   </div>
 </div>
 
@@ -120,6 +123,22 @@
 
   .url-input::placeholder {
     color: #6b7280;
+  }
+
+  .field-hint {
+    font-size: 11px;
+    color: #6b7280;
+    line-height: 1.4;
+    margin-top: 2px;
+  }
+
+  .field-hint code {
+    background-color: #1a2847;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    color: #60a5fa;
   }
 
   .method-action-row {

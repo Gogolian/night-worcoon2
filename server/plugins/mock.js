@@ -74,6 +74,147 @@ function findRecording(req, requestBody, recordingsFolder) {
 }
 
 /**
+ * Match a request against a rule
+ * Supports:
+ * - Exact match: /bff/cms/config or bff/cms/config
+ * - Substring match: cms, cms/config, config
+ * - Dynamic segments: /bff/:id/config (where :something acts as wildcard)
+ */
+function matchRule(req, rule) {
+  // Parse URL to get pathname
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  let pathname = url.pathname;
+  const method = req.method.toUpperCase();
+  
+  // Check if method matches
+  if (!rule.method || !rule.method.includes(method)) {
+    return false;
+  }
+  
+  // Check if URL matches
+  // Rule URL can be empty (match all) or specific path
+  if (!rule.url || rule.url === '') {
+    return true; // Empty URL matches all
+  }
+  
+  // Normalize both paths: remove leading slash
+  const normalizedPathname = pathname.startsWith('/') ? pathname.slice(1) : pathname;
+  const normalizedRuleUrl = rule.url.startsWith('/') ? rule.url.slice(1) : rule.url;
+  
+  // Check if rule contains dynamic segments (e.g., :id, :customerId)
+  if (normalizedRuleUrl.includes(':')) {
+    // Convert rule pattern to regex
+    // Split both paths into segments
+    const patternSegments = normalizedRuleUrl.split('/');
+    const pathSegments = normalizedPathname.split('/');
+    
+    // Must have same number of segments for exact match
+    if (patternSegments.length !== pathSegments.length) {
+      return false;
+    }
+    
+    // Check each segment
+    for (let i = 0; i < patternSegments.length; i++) {
+      const patternSeg = patternSegments[i];
+      const pathSeg = pathSegments[i];
+      
+      // :something acts as wildcard (matches any value)
+      if (patternSeg.startsWith(':')) {
+        continue; // This segment matches
+      }
+      
+      // Exact segment match required
+      if (patternSeg !== pathSeg) {
+        return false;
+      }
+    }
+    
+    return true; // All segments matched
+  }
+  
+  // Simple substring match (case-insensitive)
+  // Check if the rule URL appears anywhere in the pathname
+  if (normalizedPathname.includes(normalizedRuleUrl)) {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Execute an action (RET_REC or PASS)
+ */
+function executeAction(action, fallbackFallback, req, requestBody, recordingsFolder) {
+  if (action === 'PASS') {
+    // Let the request pass through to target server
+    return null;
+  }
+  
+  if (action === 'RET_REC') {
+    // Try to find a recording
+    const recording = findRecording(req, requestBody, recordingsFolder);
+    
+    if (recording) {
+      // Return the recorded response
+      console.log(`🎭 Mock: Returning recorded response for ${req.method} ${req.url}`);
+      return {
+        action: 'mock',
+        mock: {
+          statusCode: recording.httpStatus,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Mock-Source': 'recording',
+            'AAmocked': ' ~~~~~ SUCCESSFULLY MOCKED BY NWC2 ~~~~~ '
+          },
+          body: JSON.stringify(recording.response)
+        }
+      };
+    }
+    
+    // No recording found - apply fallback_fallback
+    console.log(`🎭 Mock: No recording found for ${req.method} ${req.url}, applying fallback_fallback: ${fallbackFallback}`);
+    
+    if (fallbackFallback === 'PASS') {
+      // Pass through to target server
+      return null;
+    }
+    
+    if (fallbackFallback === '500') {
+      return {
+        action: 'mock',
+        mock: {
+          statusCode: 500,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Mock-Source': 'fallback',
+            'AAmocked': ' ~~~~~ SUCCESSFULLY MOCKED BY NWC2 ~~~~~ '
+          },
+          body: JSON.stringify({ error: 'No recording found' })
+        }
+      };
+    }
+    
+    if (fallbackFallback === '200') {
+      return {
+        action: 'mock',
+        mock: {
+          statusCode: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Mock-Source': 'fallback',
+            'AAmocked': ' ~~~~~ SUCCESSFULLY MOCKED BY NWC2 ~~~~~ '
+          },
+          body: JSON.stringify({})
+        }
+      };
+    }
+  }
+  
+  // Default: pass through
+  return null;
+}
+
+/**
  * Mock response plugin
  * Returns mock responses based on rules or passes through to target server
  */
@@ -108,80 +249,33 @@ export default {
     }
   },
   handler: async ({ req, requestBody, config, decision }) => {
-    const { fallback, fallback_fallback, recordingsFolder = 'active' } = config;
+    const { rules = [], fallback, fallback_fallback, recordingsFolder = 'active' } = config;
     
-    // TODO: Implement rule matching logic
-    // For now, using fallback action directly
-    
-    let action = fallback;
-    
-    // Handle the action
-    if (action === 'PASS') {
-      // Let the request pass through to target server
-      return null;
-    }
-    
-    if (action === 'RET_REC') {
-      // Try to find a recording
-      const recording = findRecording(req, requestBody, recordingsFolder);
-      
-      if (recording) {
-        // Return the recorded response
-        console.log(`🎭 Mock: Returning recorded response for ${req.method} ${req.url}`);
-        return {
-          action: 'mock',
-          mock: {
-            statusCode: recording.httpStatus,
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Mock-Source': 'recording',
-              'AAmocked': ' ~~~~~ SUCCESSFULLY MOCKED BY NWC2 ~~~~~ '
-            },
-            body: JSON.stringify(recording.response)
-          }
-        };
-      }
-      
-      // No recording found - apply fallback_fallback
-      console.log(`🎭 Mock: No recording found for ${req.method} ${req.url}, applying fallback_fallback: ${fallback_fallback}`);
-      
-      if (fallback_fallback === 'PASS') {
-        // Pass through to target server
-        return null;
-      }
-      
-      if (fallback_fallback === '500') {
-        return {
-          action: 'mock',
-          mock: {
-            statusCode: 500,
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Mock-Source': 'fallback',
-              'AAmocked': ' ~~~~~ SUCCESSFULLY MOCKED BY NWC2 ~~~~~ '
-            },
-            body: JSON.stringify({ error: 'No recording found' })
-          }
-        };
-      }
-      
-      if (fallback_fallback === '200') {
-        return {
-          action: 'mock',
-          mock: {
-            statusCode: 200,
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Mock-Source': 'fallback',
-              'AAmocked': ' ~~~~~ SUCCESSFULLY MOCKED BY NWC2 ~~~~~ '
-            },
-            body: JSON.stringify({})
-          }
-        };
+    // Try to match against rules
+    let matchedRule = null;
+    for (const rule of rules) {
+      if (matchRule(req, rule)) {
+        matchedRule = rule;
+        break; // Use first matching rule
       }
     }
     
-    // Default: pass through
-    return null;
+    let action;
+    let ruleFallbackFallback;
+    
+    if (matchedRule) {
+      // Use rule's action and fallback_fallback (if specified)
+      action = matchedRule.action;
+      ruleFallbackFallback = matchedRule.fallback_fallback || fallback_fallback;
+      console.log(`🎯 Mock: Matched rule for ${req.method} ${req.url} -> ${action}`);
+    } else {
+      // No rule matched, use global fallback
+      action = fallback;
+      ruleFallbackFallback = fallback_fallback;
+      console.log(`🎯 Mock: No rule matched for ${req.method} ${req.url}, using fallback -> ${action}`);
+    }
+    
+    // Execute the action
+    return executeAction(action, ruleFallbackFallback, req, requestBody, recordingsFolder);
   }
 };
