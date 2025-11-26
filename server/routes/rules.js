@@ -65,6 +65,21 @@ export function setupRulesRoutes(pluginController, state) {
       const files = readdirSync(RULES_DIR)
         .filter(f => f.endsWith('.json'))
         .map(f => f.replace('.json', ''));
+      
+      // If no rule sets exist, create the default 'active' rule set
+      if (files.length === 0) {
+        const defaultRuleSet = { 
+          rules: [], 
+          fallback: 'PASS', 
+          fallback_fallback: 'PASS', 
+          recordingsFolder: 'active' 
+        };
+        const activePath = join(RULES_DIR, 'active.json');
+        writeFileSync(activePath, JSON.stringify(defaultRuleSet, null, 2), 'utf8');
+        console.log(`✓ Created default 'active' rule set`);
+        files.push('active');
+      }
+      
       res.json({ sets: files });
     } catch (err) {
       console.error('Error listing rule sets:', err);
