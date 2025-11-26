@@ -89,6 +89,8 @@
     padding: 0;
     box-sizing: border-box;
     z-index: 1;
+        -webkit-filter: drop-shadow(0 0 5px  rgba(217,46,255,0.05));
+         filter: drop-shadow(0 0 5px  rgba(217,46,255,0.05));
   }
 
   :global(html, body) {
