@@ -12,6 +12,7 @@ class PluginController {
   constructor() {
     this.plugins = [];
     this.enabledPlugins = new Map();
+    this.pluginConfigs = new Map(); // Store plugin configurations
     this.pluginOrder = []; // Will be set from state
   }
 
@@ -49,6 +50,25 @@ class PluginController {
   }
 
   /**
+   * Update plugin configuration dynamically
+   * @param {string} name - Plugin name
+   * @param {Object} config - Configuration object
+   */
+  setPluginConfig(name, config) {
+    this.pluginConfigs.set(name, config);
+    console.log(`Plugin ${name} configuration updated`);
+  }
+
+  /**
+   * Get plugin configuration
+   * @param {string} name - Plugin name
+   * @returns {Object} Configuration object
+   */
+  getPluginConfig(name) {
+    return this.pluginConfigs.get(name) || {};
+  }
+
+  /**
    * Process request through all enabled plugins in order
    * @param {Object} context - Request context
    * @returns {Object} Decision object
@@ -81,10 +101,13 @@ class PluginController {
       }
 
       try {
+        // Get plugin-specific config from storage
+        const pluginConfig = this.getPluginConfig(plugin.name);
+        
         const pluginResult = await plugin.handler({
           req,
           requestBody,
-          config,
+          config: pluginConfig, // Pass plugin-specific config
           decision // pass current decision so plugin can see what previous plugins decided
         });
 

@@ -1,9 +1,16 @@
 import express from 'express';
 import httpProxy from 'http-proxy';
 import cors from 'cors';
+import { readFileSync, existsSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { pluginController } from './pluginController.js';
 import { setupApiRoutes } from './routes/api.js';
+import { setupRulesRoutes } from './routes/rules.js';
 import { loadState, saveState } from './stateManager.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 const proxy = httpProxy.createProxyServer({
@@ -37,6 +44,30 @@ if (state.plugins) {
   });
 }
 
+// Apply plugin configurations from saved state
+if (state.pluginConfigs) {
+  Object.entries(state.pluginConfigs).forEach(([name, config]) => {
+    try {
+      pluginController.setPluginConfig(name, config);
+    } catch (err) {
+      console.error(`Failed to restore plugin ${name} config:`, err.message);
+    }
+  });
+}
+
+// Load active rules for mock plugin on startup
+try {
+  const activePath = join(__dirname, '..', 'rules', 'active.json');
+  if (existsSync(activePath)) {
+    const data = readFileSync(activePath, 'utf8');
+    const activeRules = JSON.parse(data);
+    pluginController.setPluginConfig('mock', activeRules);
+    console.log('✓ Loaded active mock rules');
+  }
+} catch (err) {
+  console.error('Failed to load active rules on startup:', err.message);
+}
+
 // Middleware
 app.use(cors());
 
@@ -66,6 +97,7 @@ app.use((req, res, next) => {
 
 // Setup API routes
 app.use('/__api', setupApiRoutes(pluginController, state));
+app.use('/__api/rules', setupRulesRoutes(pluginController, state));
 
 // Proxy error handling
 proxy.on('error', (err, req, res) => {
@@ -115,19 +147,24 @@ app.all('*', async (req, res) => {
   
   // Merge headers: plugin headers first, then config headers (without overwriting)
   const mergedHeaders = { ...req.headers };
+  debugLog(`📋 [${req.method}] Original headers:`, mergedHeaders);
   
   // Apply plugin modifications
   if (decision.modifyRequest && decision.modifyRequest.headers) {
+    debugLog(`📋 [${req.method}] Applying plugin header modifications:`, decision.modifyRequest.headers);
     Object.assign(mergedHeaders, decision.modifyRequest.headers);
   }
   
   // Apply custom request headers from config (only if not already set)
   if (state.requestHeaders) {
+    debugLog(`📋 [${req.method}] Applying config request headers:`, state.requestHeaders);
     Object.assign(mergedHeaders, state.requestHeaders);
+  } else {
+    debugLog(`📋 [${req.method}] No config request headers to apply`);
   }
   
   req.headers = mergedHeaders;
-  debugLog(`📋 [${req.method}] Final headers:`, Object.keys(req.headers));
+  debugLog(`📋 [${req.method}] Final merged headers:`, mergedHeaders);
 
   // Store decision and body on req for use in proxyRes handler
   req.pluginDecision = decision;
@@ -172,7 +209,7 @@ proxy.on('proxyRes', (proxyRes, req, res) => {
   
   // Check if we need to handle the response
   const shouldModifyResponse = decision && decision.modifyResponse;
-  debugLog(`🔍 [${req.method}] Should modify response: ${shouldModifyResponse}`);
+  debugLog(`🔍 [${req.method}] Should modify response: ${!!shouldModifyResponse}`);
   
   if (!shouldModifyResponse) {
     // No modifications needed, stream directly to client
@@ -203,7 +240,9 @@ proxy.on('proxyRes', (proxyRes, req, res) => {
       // Update decision with actual request body for recorder
       req.actualRequestBody = req.bufferedBody;
       const modifications = decision.modifyResponse(proxyRes, responseBody);
-      
+
+      debugLog(`[${req.method}] modifications`, modifications);
+
       if (modifications) {
         if (modifications.statusCode) finalStatusCode = modifications.statusCode;
         if (modifications.headers) finalHeaders = { ...finalHeaders, ...modifications.headers };

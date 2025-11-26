@@ -30,10 +30,12 @@ export function setupApiRoutes(pluginController, state) {
     
     if (targetUrl !== undefined) {
       state.targetUrl = targetUrl;
+      console.log(`✓ Target URL updated to: ${targetUrl} (no restart needed)`);
     }
     
     if (requestHeaders !== undefined) {
       state.requestHeaders = requestHeaders;
+      console.log(`✓ Request headers updated (no restart needed)`);
     }
     
     if (debugLogs !== undefined) {
@@ -42,26 +44,14 @@ export function setupApiRoutes(pluginController, state) {
     
     saveState(state);
     
-    const message = autoRestart 
-      ? 'Configuration saved. Server will restart in 2 seconds...'
-      : 'Configuration saved. Restart server to apply changes.';
-    
     res.json({
       success: true,
       proxyPort: state.proxyPort,
       targetUrl: state.targetUrl,
       requestHeaders: state.requestHeaders,
       debugLogs: state.debugLogs,
-      message
+      message: 'Configuration saved and applied (no restart needed)'
     });
-    
-    // Auto-restart if requested
-    if (autoRestart) {
-      setTimeout(() => {
-        console.log('🔄 Restarting server due to configuration change...');
-        process.exit(0);
-      }, 2000);
-    }
   });
 
   // Manual server restart endpoint
@@ -176,10 +166,12 @@ export function setupApiRoutes(pluginController, state) {
     
     saveState(state);
     
+    console.log(`✓ Config set "${configSet.name}" activated - Target: ${configSet.targetUrl} (no restart needed)`);
+    
     res.json({
       success: true,
       activeConfigSet: id,
-      message: 'Config set activated. Restart server to apply changes.'
+      message: 'Config set activated and applied (no restart needed)'
     });
   });
 

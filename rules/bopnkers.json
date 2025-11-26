@@ -1,0 +1,43 @@
+{
+  "rules": [
+    {
+      "method": [
+        "GET",
+        "POST",
+        "PATCH",
+        "PUT"
+      ],
+      "url": "",
+      "action": "RET_REC"
+    },
+    {
+      "method": [
+        "GET",
+        "DELETE",
+        "PUT"
+      ],
+      "url": "",
+      "action": "RET_REC"
+    },
+    {
+      "method": [
+        "GET",
+        "OPTIONS",
+        "DELETE",
+        "PUT"
+      ],
+      "url": "",
+      "action": "RET_REC"
+    },
+    {
+      "method": [
+        "GET",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "url": "",
+      "action": "RET_REC"
+    }
+  ],
+  "fallback": "PASS"
+}

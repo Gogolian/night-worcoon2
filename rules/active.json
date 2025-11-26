@@ -1,0 +1,6 @@
+{
+  "rules": [],
+  "fallback": "RET_REC",
+  "fallback_fallback": "PASS",
+  "recordingsFolder": "active"
+}
