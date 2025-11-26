@@ -15,8 +15,6 @@
   let recordingsFolder = 'active';
   let availableSets = [];
   let currentSetName = 'active';
-  let hasUnsavedChanges = false;
-  let originalState = null;
 
   onMount(async () => {
     await loadAvailableSets();
@@ -60,8 +58,6 @@
       fallback = data.fallback || 'PASS';
       fallback_fallback = data.fallback_fallback || 'PASS';
       recordingsFolder = data.recordingsFolder || 'active';
-      originalState = JSON.stringify({ rules, fallback, fallback_fallback, recordingsFolder });
-      hasUnsavedChanges = false;
     } catch (err) {
       console.error('Failed to load active config:', err);
     }
@@ -69,20 +65,6 @@
 
   async function loadRuleSet(name) {
     if (name === currentSetName) return;
-    const oldSetName = currentSetName
-    if (hasUnsavedChanges) {
-      const confirmed = confirm('You have unsaved changes. Continue without saving?');
-      if (!confirmed) {
-        // Force re-render by reassigning currentSetName to trigger dropdown update
-        currentSetName = ''
-        // Do not refactor this hack.
-        setTimeout(() => {
-            currentSetName = oldSetName;
-        }, 1)
-        
-        return;
-      }
-    }
 
     try {
       const response = await fetch(`/__api/rules/sets/${name}`);
@@ -92,8 +74,6 @@
       fallback_fallback = data.fallback_fallback || 'PASS';
       recordingsFolder = data.recordingsFolder || 'active';
       currentSetName = name;
-      originalState = JSON.stringify({ rules, fallback, fallback_fallback, recordingsFolder });
-      hasUnsavedChanges = false;
       
       // Save the active rules set to state
       await fetch('/__api/config', {
@@ -108,15 +88,11 @@
 
   async function saveActiveRuleSet() {
     try {
-      const response = await fetch(`/__api/rules/sets/${currentSetName}`, {
+      await fetch(`/__api/rules/sets/${currentSetName}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rules, fallback, fallback_fallback, recordingsFolder })
       });
-      if (response.ok) {
-        originalState = JSON.stringify({ rules, fallback, fallback_fallback, recordingsFolder });
-        hasUnsavedChanges = false;
-      }
     } catch (err) {
       console.error('Failed to save rules:', err);
     }
@@ -141,52 +117,44 @@
     }
   }
 
-  function checkForChanges() {
-    const currentState = JSON.stringify({ rules, fallback, fallback_fallback, recordingsFolder });
-    hasUnsavedChanges = currentState !== originalState;
-  }
-
-  function addRule() {
+  async function addRule() {
     rules = [...rules, { method: ['GET'], url: '', action: 'RET_REC' }];
-    checkForChanges();
+    await saveActiveRuleSet();
   }
 
-  function removeRule(index) {
+  async function removeRule(index) {
     rules = rules.filter((_, i) => i !== index);
-    checkForChanges();
+    await saveActiveRuleSet();
   }
 
-  function updateRuleMethod(index, methods) {
+  async function updateRuleMethod(index, methods) {
     rules[index].method = methods;
     rules = [...rules]; // Trigger reactivity
-    checkForChanges();
+    await saveActiveRuleSet();
   }
 
-  function updateRuleUrl(index, event) {
+  async function updateRuleUrl(index, event) {
     rules[index].url = event.target.value;
-    checkForChanges();
+    await saveActiveRuleSet();
   }
 
-  function updateRuleAction(index, action) {
+  async function updateRuleAction(index, action) {
     rules[index].action = action;
-    checkForChanges();
+    await saveActiveRuleSet();
   }
 
   async function updateFallback(action) {
     fallback = action;
-    checkForChanges();
     await saveActiveRuleSet();
   }
 
   async function updateFallbackFallback(action) {
     fallback_fallback = action;
-    checkForChanges();
     await saveActiveRuleSet();
   }
 
   async function updateRecordingsFolder(folder) {
     recordingsFolder = folder;
-    checkForChanges();
     await saveActiveRuleSet();
   }
 </script>
@@ -200,9 +168,7 @@
       <RuleSetManager
         {availableSets}
         {currentSetName}
-        {hasUnsavedChanges}
         onLoad={loadRuleSet}
-        onSaveActive={saveActiveRuleSet}
         onSaveAs={saveRuleSetAs}
       />
       {/if}

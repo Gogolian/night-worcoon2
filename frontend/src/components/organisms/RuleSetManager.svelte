@@ -3,9 +3,7 @@
 
   export let availableSets = [];
   export let currentSetName = 'active';
-  export let hasUnsavedChanges = false;
   export let onLoad;
-  export let onSaveActive;
   export let onSaveAs;
 
   let showSaveAsDetails = false;
@@ -30,17 +28,11 @@
         <option value={setName}>{setName}</option>
       {/each}
     </select>
-    {#if hasUnsavedChanges}
-      <span class="unsaved-badge">Unsaved changes</span>
-    {/if}
   </div>
   
   <div class="rule-set-actions">
-    <Button on:click={onSaveActive}>
-      Save to Active
-    </Button>
     <Button variant={ !showSaveAsDetails ? "secondary" : "primary" } on:click={() => showSaveAsDetails = !showSaveAsDetails}>
-      Save As...
+      Duplicate '{currentSetName}'
     </Button>
   </div>
 </div>
@@ -99,18 +91,6 @@
     outline: none;
     border-color: #60a5fa;
     box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.1);
-  }
-
-  .unsaved-badge {
-    padding: 4px 10px;
-    background-color: rgba(251, 146, 60, 0.15);
-    border: 2px solid rgba(251, 146, 60, 0.4);
-    border-radius: 4px;
-    color: #fb923c;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
   }
 
   .rule-set-actions {
