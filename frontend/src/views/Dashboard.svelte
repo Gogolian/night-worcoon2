@@ -37,10 +37,6 @@
   }
 
   async function switchConfigSet(id) {
-    if (!confirm('Switch config set? Server will need to restart for changes to apply.')) {
-      return;
-    }
-
     switchingSet = true;
     try {
       const response = await fetch(`/__api/config-sets/${id}/activate`, {
