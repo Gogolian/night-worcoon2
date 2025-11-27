@@ -5,6 +5,7 @@
   import MainContent from './components/organisms/MainContent.svelte';
   import Toast from './components/molecules/Toast.svelte';
   import Dashboard from './views/Dashboard.svelte';
+  import Recordings from './views/Recordings.svelte';
   import Plugins from './views/Plugins.svelte';
   import Settings from './views/Settings.svelte';
   import LoggerPlugin from './views/plugins/LoggerPlugin.svelte';
@@ -28,6 +29,7 @@
 
   $: sidebarItems = [
     { ...routes.dashboard, active: routes.dashboard.id === $currentRoute },
+    { ...routes.recordings, active: routes.recordings.id === $currentRoute },
     { ...routes.plugins, active: routes.plugins.id === $currentRoute },
     // Add all plugins under Plugins section (enabled and disabled)
     ...Object.values($allRoutes)
@@ -54,6 +56,8 @@
     switch ($currentRoute) {
       case 'dashboard':
         return Dashboard;
+      case 'recordings':
+        return Recordings;
       case 'plugins':
         return Plugins;
       case 'settings':

@@ -11,6 +11,13 @@ export const routes = {
     path: '/dashboard',
     isPlugin: false
   },
+  recordings: {
+    id: 'recordings',
+    label: 'Recordings',
+    icon: '📼',
+    path: '/recordings',
+    isPlugin: false
+  },
   plugins: {
     id: 'plugins',
     label: 'Plugins',

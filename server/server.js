@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { pluginController } from './pluginController.js';
 import { setupApiRoutes } from './routes/api.js';
 import { setupRulesRoutes } from './routes/rules.js';
+import { setupRecordingsRoutes } from './routes/recordings.js';
 import { loadState, saveState, getActiveConfigSet } from './stateManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -88,6 +89,7 @@ app.use((req, res, next) => {
 // Setup API routes
 app.use('/__api', setupApiRoutes(pluginController, state));
 app.use('/__api/rules', setupRulesRoutes(pluginController, state));
+app.use('/__api/recordings', setupRecordingsRoutes());
 
 // Proxy error handling
 proxy.on('error', (err, req, res) => {
