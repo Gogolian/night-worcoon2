@@ -1,5 +1,6 @@
 <script>
-  export let currentRoute = '';
+  import StatusMessage from '../molecules/StatusMessage.svelte';
+  import { proxyStatus } from '../../stores/proxy.js';
 </script>
 
 <header class="header-organism">
@@ -8,9 +9,11 @@
       <h2 class="header-title">NWC2</h2>
     </div>
     <div class="header-right">
-      <nav class="header-nav">
-        <slot />
-      </nav>
+      {#if !$proxyStatus.serverOnline}
+        <StatusMessage type="error">
+          Server Offline: The proxy server is not responding. Please start the server on port 8079.
+        </StatusMessage>
+      {/if}
     </div>
   </div>
 </header>
@@ -50,11 +53,6 @@
   .header-right {
     display: flex;
     align-items: center;
-  }
-
-  .header-nav {
-    display: flex;
-    gap: 20px;
   }
 
 </style>

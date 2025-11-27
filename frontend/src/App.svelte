@@ -3,6 +3,7 @@
   import Header from './components/organisms/Header.svelte';
   import Sidebar from './components/organisms/Sidebar.svelte';
   import MainContent from './components/organisms/MainContent.svelte';
+  import Toast from './components/molecules/Toast.svelte';
   import Dashboard from './views/Dashboard.svelte';
   import Plugins from './views/Plugins.svelte';
   import Settings from './views/Settings.svelte';
@@ -82,6 +83,8 @@
     </MainContent>
   </div>
 </div>
+
+<Toast />
 
 <style global>
   :global(*) {
