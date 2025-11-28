@@ -1,25 +1,27 @@
 <script>
-  import Button from '../atoms/Button.svelte';
+  import Button from "../atoms/Button.svelte";
+  import DuplicateButton from "../atoms/DuplicateButton.svelte";
+  import SaveButton from "../atoms/SaveButton.svelte";
 
   export let availableSets = [];
-  export let currentSetName = 'active';
+  export let currentSetName = "active";
   export let onLoad;
   export let onSaveAs;
 
   let showSaveAsDetails = false;
-  let saveAsName = '';
+  let saveAsName = "";
 
   async function handleSaveAs() {
     await onSaveAs(saveAsName);
     showSaveAsDetails = false;
-    saveAsName = '';
+    saveAsName = "";
   }
 </script>
 
 <div class="rule-set-controls">
   <div class="rule-set-selector">
     <span class="field-label">Active Rule Set</span>
-    <select 
+    <select
       class="rule-set-dropdown"
       value={currentSetName}
       on:change={(e) => onLoad(e.target.value)}
@@ -28,26 +30,22 @@
         <option value={setName}>{setName}</option>
       {/each}
     </select>
-  </div>
-  
-  <div class="rule-set-actions">
-    <Button variant={ !showSaveAsDetails ? "secondary" : "primary" } on:click={() => showSaveAsDetails = !showSaveAsDetails}>
-      Duplicate '{currentSetName}'
-    </Button>
-  </div>
-</div>
-
-{#if showSaveAsDetails}
-<div class="save-as-details">
-    <input 
-      type="text" 
-      class="save-name-input"
-      placeholder="Enter rule set name"
-      bind:value={saveAsName}
+    <DuplicateButton
+      on:duplicate={() => (showSaveAsDetails = !showSaveAsDetails)}
     />
-    <Button size="small" on:click={handleSaveAs}>Save</Button>
+    {#if showSaveAsDetails}
+      <div class="save-as-details">
+        <input
+          type="text"
+          class="save-name-input"
+          placeholder="Enter rule set name"
+          bind:value={saveAsName}
+        />
+        <SaveButton on:save={handleSaveAs} />
+      </div>
+    {/if}
+  </div>
 </div>
-{/if}
 
 <style>
   .rule-set-controls {
@@ -92,14 +90,10 @@
     border-color: #60a5fa;
     box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.1);
   }
-
-  .rule-set-actions {
+  .save-as-details {
     display: flex;
+    align-items: center;
     gap: 8px;
-  }
-  .save-as-details{
-    margin-top: 20px;
-    margin-bottom: 5px;
   }
 
   .save-name-input {
@@ -111,7 +105,6 @@
     color: #d4d4d8;
     font-size: 13px;
     font-family: inherit;
-    margin-bottom: 16px;
     box-sizing: border-box;
   }
 

@@ -1,39 +1,40 @@
 <script>
   import { createEventDispatcher } from 'svelte';
-  import duplicateIcon from '../../assets/copy.svg';
+  import saveIcon from '../../assets/save.svg';
 
   const dispatch = createEventDispatcher();
 
-  export let isDuplicating = false;
+  export let isSaving = false;
 
   async function handleClick(event) {
     event.stopPropagation();
     
-    isDuplicating = true;
+    isSaving = true;
     try {
-      dispatch('duplicate');
+      dispatch('save');
     } finally {
-      isDuplicating = false;
+      isSaving = false;
     }
   }
 </script>
 
 <button
-  class="duplicate-btn"
-  disabled={isDuplicating}
+  class="save-btn"
+  disabled={isSaving}
   on:click={handleClick}
-  title="Duplicate"
+  title="Save"
 >
-  {#if isDuplicating}
-    <span>Duplicating...</span>
+  {#if isSaving}
+    <span>Saving...</span>
   {:else}
-    <img src={duplicateIcon} alt="Duplicate" class="duplicate-icon" />
+    <img src={saveIcon} alt="save" class="save-icon" />
   {/if}
 </button>
 
 <style>
-  .duplicate-btn {
+  .save-btn {
     padding: 4px 6px;
+    height: min-content;
     background-color: rgba(59, 130, 246, 0.2);
     border: 1px solid #93c5fd;
     border-radius: 3px;
@@ -47,16 +48,16 @@
     font-weight: 500;
   }
 
-  .duplicate-btn:hover:not(:disabled) {
+  .save-btn:hover:not(:disabled) {
     background-color: rgba(59, 130, 246, 0.3);
   }
 
-  .duplicate-btn:disabled {
+  .save-btn:disabled {
     cursor: not-allowed;
     opacity: 0.5;
   }
 
-  .duplicate-icon {
+  .save-icon {
     width: 14px;
     height: 14px;
     filter: invert(42%) sepia(84%) saturate(1269%) hue-rotate(198deg) brightness(98%) contrast(95%);
