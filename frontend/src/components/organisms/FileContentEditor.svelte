@@ -1,8 +1,8 @@
 <script>
+  import { onMount, afterUpdate } from 'svelte';
   import Button from '../atoms/Button.svelte';
   import { toast } from '../../stores/toast.js';
-  import hljs from 'highlight.js';
-  import 'highlight.js/styles/atom-one-dark.css';
+  import * as ace from 'ace-builds';
 
   export let selectedFile = null;
   export let selectedFolder = '';
@@ -11,18 +11,55 @@
   export let loadingContent = false;
   export let saving = false;
 
-  let highlightedContent = '';
-  let showHighlight = false;
+  let editor;
+  let editorContainer;
+  let editorInitialized = false;
 
   $: isModified = fileContent !== originalContent && originalContent !== null;
 
-  $: if (fileContent && !loadingContent) {
-    try {
-      highlightedContent = hljs.highlight(fileContent, { language: 'json', ignoreIllegals: true }).value;
-      showHighlight = true;
-    } catch (err) {
-      showHighlight = false;
+  function initializeEditor() {
+    if (!editorContainer || editorInitialized) return;
+    
+    ace.config.set('basePath', 'https://cdn.jsdelivr.net/npm/ace-builds@1.32.2/src-noconflict/');
+    
+    editor = ace.edit(editorContainer);
+    editor.setTheme('ace/theme/monokai');
+    editor.session.setMode('ace/mode/json');
+    editor.setFontSize(12);
+    editor.setOptions({
+      enableBasicAutocompletion: true,
+      enableLiveAutocompletion: false,
+      showPrintMargin: false,
+      highlightActiveLine: true,
+      highlightSelectedWord: true,
+      wrap: true,
+      tabSize: 2,
+    });
+
+    if (fileContent) {
+      editor.setValue(fileContent, -1);
     }
+
+    editor.session.on('change', () => {
+      const value = editor.getValue();
+      if (value !== fileContent) {
+        fileContent = value;
+      }
+    });
+
+    editorInitialized = true;
+  }
+
+  afterUpdate(() => {
+    if (editorContainer && !editorInitialized && fileContent !== null && !loadingContent) {
+      initializeEditor();
+    }
+  });
+
+  $: if (editor && editorInitialized && fileContent !== undefined && fileContent !== editor.getValue()) {
+    const pos = editor.getCursorPosition();
+    editor.setValue(fileContent, -1);
+    editor.moveCursorToPosition(pos);
   }
 
   async function saveFileContent() {
@@ -68,58 +105,52 @@
   }
 </script>
 
-{#if selectedFile}
-  <div class="file-content-section">
-    <div class="content-header">
-      <h2>File Content: {selectedFile}</h2>
-      {#if !loadingContent && fileContent}
-        <div class="content-actions">
-          <Button 
-            variant="secondary" 
-            size="small" 
-            on:click={copyFileContent}
-          >
-            Copy File Contents
-          </Button>
-          <Button 
-            variant="primary" 
-            size="small" 
-            on:click={saveFileContent}
-            disabled={!isModified || saving}
-          >
-            {saving ? 'Saving...' : 'Save'}
-          </Button>
-        </div>
-      {/if}
+<div class="file-content-section" class:visible={selectedFile}>
+  <div class="content-header">
+    <h2>{selectedFile || 'No file selected'}</h2>
+    {#if fileContent && selectedFile}
+      <div class="content-actions">
+        <Button 
+          variant="secondary" 
+          size="small" 
+          on:click={copyFileContent}
+        >
+          Copy File Contents
+        </Button>
+        <Button 
+          variant="primary" 
+          size="small" 
+          on:click={saveFileContent}
+          disabled={!isModified || saving}
+        >
+          {saving ? 'Saving...' : 'Save'}
+        </Button>
+      </div>
+    {/if}
+  </div>
+  <div class="content-body">
+    <div class="loading-content" class:visible={loadingContent}>
+      <p>Loading content...</p>
     </div>
-    <div class="content-body">
-      {#if loadingContent}
-        <div class="loading-content">
-          <p>Loading content...</p>
-        </div>
-      {:else if fileContent !== null}
-        <div class="editor-container">
-          <textarea 
-            class="content-textarea"
-            bind:value={fileContent}
-            spellcheck="false"
-          />
-          {#if showHighlight}
-            <pre class="highlight-overlay"><code class="language-json">{@html highlightedContent}</code></pre>
-          {/if}
-        </div>
-      {:else}
-        <p class="content-error">Failed to load content</p>
-      {/if}
+    <div class="editor-container" class:visible={!loadingContent && fileContent !== null}>
+      <div class="editor-wrapper" bind:this={editorContainer}></div>
+    </div>
+    <div class="content-error" class:visible={!loadingContent && fileContent === null && selectedFile}>
+      <p>Failed to load content</p>
     </div>
   </div>
-{/if}
+</div>
 
 <style>
   .file-content-section {
     margin-top: 10px;
     background: #12192b;
     border: 1px solid #1a2847;
+    display: none;
+  }
+
+  .file-content-section.visible {
+    display: block;
   }
 
   .content-header {
@@ -136,7 +167,6 @@
     font-size: 12px;
     font-weight: 600;
     margin: 0;
-    text-transform: uppercase;
     letter-spacing: 0.5px;
   }
 
@@ -150,56 +180,61 @@
     max-height: 500px;
     overflow: hidden;
     display: flex;
+    flex: 1;
     position: relative;
   }
 
   .editor-container {
-    position: relative;
+    display: none;
     width: 100%;
-    flex: 1;
+    height: 500px;
   }
 
-  .content-textarea {
-    position: relative;
-    z-index: 2;
-    flex: 1;
+  .editor-container.visible {
+    display: block;
+  }
+
+  .editor-wrapper {
     width: 100%;
-    min-height: 500px;
-    max-height: 500px;
-    padding: 12px;
-    background-color: transparent;
-    border: none;
-    color: transparent;
-    caret-color: #e0e0e0;
-    font-size: 12px;
-    font-family: 'Courier New', monospace;
-    line-height: 1.5;
-    resize: none;
-    overflow: auto;
+    height: 500px;
   }
 
-  .content-textarea:focus {
-    outline: none;
-  }
-
-  .highlight-overlay {
+  .loading-content,
+  .content-error {
+    display: none;
+    text-align: center;
+    padding: 20px;
+    color: #9ca3af;
+    font-size: 13px;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
     position: absolute;
     top: 0;
     left: 0;
-    z-index: 1;
-    width: 100%;
-    min-height: 500px;
-    max-height: 500px;
-    padding: 12px;
-    margin: 0;
+    right: 0;
+    bottom: 0;
+  }
+
+  .loading-content.visible,
+  .content-error.visible {
+    display: flex;
+  }
+
+  .content-error {
+    color: #f87171;
+  }
+
+  :global(.content-body .ace_editor) {
+    font: 'Consolas' sans-serif;
+  }
+
+  :global(.content-body .ace_scroller) {
     background-color: #0f1535;
-    color: #e0e0e0;
-    font-size: 12px;
-    font-family: 'Courier New', monospace;
-    line-height: 1.5;
-    overflow: auto;
-    pointer-events: none;
-    white-space: pre;
-    word-break: break-all;
+  }
+
+  :global(.content-body .ace_gutter) {
+    background-color: #12192b;
+    color: #6b7280;
   }
 </style>
