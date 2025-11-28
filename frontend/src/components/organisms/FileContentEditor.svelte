@@ -1,6 +1,8 @@
 <script>
   import Button from '../atoms/Button.svelte';
   import { toast } from '../../stores/toast.js';
+  import hljs from 'highlight.js';
+  import 'highlight.js/styles/atom-one-dark.css';
 
   export let selectedFile = null;
   export let selectedFolder = '';
@@ -9,7 +11,19 @@
   export let loadingContent = false;
   export let saving = false;
 
+  let highlightedContent = '';
+  let showHighlight = false;
+
   $: isModified = fileContent !== originalContent && originalContent !== null;
+
+  $: if (fileContent && !loadingContent) {
+    try {
+      highlightedContent = hljs.highlight(fileContent, { language: 'json', ignoreIllegals: true }).value;
+      showHighlight = true;
+    } catch (err) {
+      showHighlight = false;
+    }
+  }
 
   async function saveFileContent() {
     // Validate JSON
@@ -84,11 +98,16 @@
           <p>Loading content...</p>
         </div>
       {:else if fileContent !== null}
-        <textarea 
-          class="content-textarea"
-          bind:value={fileContent}
-          spellcheck="false"
-        />
+        <div class="editor-container">
+          <textarea 
+            class="content-textarea"
+            bind:value={fileContent}
+            spellcheck="false"
+          />
+          {#if showHighlight}
+            <pre class="highlight-overlay"><code class="language-json">{@html highlightedContent}</code></pre>
+          {/if}
+        </div>
       {:else}
         <p class="content-error">Failed to load content</p>
       {/if}
@@ -131,29 +150,27 @@
     max-height: 500px;
     overflow: hidden;
     display: flex;
+    position: relative;
   }
 
-  .loading-content,
-  .content-error {
-    text-align: center;
-    padding: 20px;
-    color: #9ca3af;
-    font-size: 13px;
-  }
-
-  .content-error {
-    color: #f87171;
+  .editor-container {
+    position: relative;
+    width: 100%;
+    flex: 1;
   }
 
   .content-textarea {
+    position: relative;
+    z-index: 2;
     flex: 1;
     width: 100%;
     min-height: 500px;
     max-height: 500px;
     padding: 12px;
-    background-color: #0f1535;
+    background-color: transparent;
     border: none;
-    color: #e0e0e0;
+    color: transparent;
+    caret-color: #e0e0e0;
     font-size: 12px;
     font-family: 'Courier New', monospace;
     line-height: 1.5;
@@ -163,6 +180,26 @@
 
   .content-textarea:focus {
     outline: none;
-    background-color: #12192b;
+  }
+
+  .highlight-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1;
+    width: 100%;
+    min-height: 500px;
+    max-height: 500px;
+    padding: 12px;
+    margin: 0;
+    background-color: #0f1535;
+    color: #e0e0e0;
+    font-size: 12px;
+    font-family: 'Courier New', monospace;
+    line-height: 1.5;
+    overflow: auto;
+    pointer-events: none;
+    white-space: pre;
+    word-break: break-all;
   }
 </style>
