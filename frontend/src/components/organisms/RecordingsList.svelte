@@ -2,6 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import Badge from '../atoms/Badge.svelte';
   import DeleteButton from '../atoms/DeleteButton.svelte';
+  import DuplicateButton from '../atoms/DuplicateButton.svelte';
 
   const dispatch = createEventDispatcher();
 
@@ -70,6 +71,10 @@
   function handleFileDelete(file) {
     dispatch('fileDelete', file);
   }
+
+  function handleFileDuplicate(file) {
+    dispatch('fileDuplicate', file);
+  }
 </script>
 
 <div class="recordings-content">
@@ -104,6 +109,7 @@
                   <Badge text="NEWEST" variant="success" size="small" />
                 {/if}
               </div>
+              <DuplicateButton on:duplicate={() => handleFileDuplicate(file)} />
               <DeleteButton on:delete={() => handleFileDelete(file)} />
             </div>
           </div>

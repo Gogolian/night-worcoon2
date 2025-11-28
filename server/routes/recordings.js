@@ -175,6 +175,57 @@ export function setupRecordingsRoutes() {
     }
   });
 
+  // Duplicate a specific file with a new timestamp
+  router.post('/duplicate/:folder/*', (req, res) => {
+    try {
+      const { folder } = req.params;
+      const filePath = req.params[0];
+      
+      const fullPath = join(RECORDINGS_DIR, folder, filePath);
+
+      if (!existsSync(fullPath)) {
+        return res.status(404).json({ error: 'File not found' });
+      }
+
+      const stat = statSync(fullPath);
+      if (!stat.isFile()) {
+        return res.status(400).json({ error: 'Not a file' });
+      }
+
+      // Read the original file content
+      const content = readFileSync(fullPath, 'utf8');
+      
+      // Generate new filename with current timestamp
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      const timestamp = `${year}${month}${day}_${hours}${minutes}${seconds}`;
+      
+      // Generate a random number for uniqueness
+      const randomNum = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+      
+      // Get the directory of the original file
+      const fileDir = dirname(fullPath);
+      const newFileName = `GET_qp_nb_${timestamp}_${randomNum}.json`;
+      const newFilePath = join(fileDir, newFileName);
+      
+      // Write the duplicated file
+      writeFileSync(newFilePath, content, 'utf8');
+      
+      // Return the new file path relative to the recordings folder
+      const relativePath = '/' + relative(join(RECORDINGS_DIR, folder), newFilePath).replace(/\\/g, '/');
+      
+      res.json({ success: true, newFile: relativePath, message: 'File duplicated successfully' });
+    } catch (err) {
+      console.error('Error duplicating file:', err);
+      res.status(500).json({ error: 'Failed to duplicate file' });
+    }
+  });
+
   return router;
 }
 

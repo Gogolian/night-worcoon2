@@ -125,6 +125,37 @@
     }
   }
 
+  async function handleFileDuplicate(event) {
+    const file = event.detail;
+    
+    try {
+      const cleanPath = file.startsWith('/') ? file.substring(1) : file;
+      const response = await fetch(`/__api/recordings/duplicate/${selectedFolder}/${cleanPath}`, {
+        method: 'POST'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to duplicate file');
+      }
+
+      const data = await response.json();
+      toast.show('File duplicated successfully', 'success');
+      
+      // Reload file list
+      await loadFiles();
+      
+      // Select the newly created file
+      if (data.newFile) {
+        selectedFile = data.newFile;
+        // Load its content
+        await handleFileSelect({ detail: data.newFile });
+      }
+    } catch (err) {
+      console.error('Failed to duplicate file:', err);
+      toast.show('Failed to duplicate file', 'error');
+    }
+  }
+
   function applyFilter() {
     if (!filterText.trim()) {
       filteredFiles = allFiles;
@@ -166,6 +197,7 @@
     hasSelection={selectedFile !== null}
     on:fileSelect={handleFileSelect}
     on:fileDelete={handleFileDelete}
+    on:fileDuplicate={handleFileDuplicate}
   />
 
   <FileContentEditor 
