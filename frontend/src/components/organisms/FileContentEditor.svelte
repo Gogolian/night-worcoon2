@@ -14,8 +14,35 @@
   let editor;
   let editorContainer;
   let editorInitialized = false;
+  let selectedTheme = 'monokai';
+  let fontSize = 12;
+
+  const themes = [
+    { value: 'monokai', label: 'Monokai' },
+    { value: 'github', label: 'GitHub' },
+    { value: 'tomorrow', label: 'Tomorrow' },
+    { value: 'twilight', label: 'Twilight' },
+    { value: 'solarized_dark', label: 'Solarized Dark' },
+    { value: 'solarized_light', label: 'Solarized Light' },
+    { value: 'dracula', label: 'Dracula' },
+    { value: 'nord_dark', label: 'Nord Dark' },
+    { value: 'one_dark', label: 'One Dark' },
+    { value: 'cobalt', label: 'Cobalt' },
+    { value: 'terminal', label: 'Terminal' },
+    { value: 'chrome', label: 'Chrome' },
+  ];
+
+  const fontSizes = [8, 10, 11, 12, 13, 14, 16, 18, 20, 22, 24];
 
   $: isModified = fileContent !== originalContent && originalContent !== null;
+
+  $: if (editor && editorInitialized && selectedTheme) {
+    editor.setTheme(`ace/theme/${selectedTheme}`);
+  }
+
+  $: if (editor && editorInitialized && fontSize) {
+    editor.setFontSize(fontSize);
+  }
 
   function initializeEditor() {
     if (!editorContainer || editorInitialized) return;
@@ -23,7 +50,7 @@
     ace.config.set('basePath', 'https://cdn.jsdelivr.net/npm/ace-builds@1.32.2/src-noconflict/');
     
     editor = ace.edit(editorContainer);
-    editor.setTheme('ace/theme/monokai');
+    editor.setTheme(`ace/theme/${selectedTheme}`);
     editor.session.setMode('ace/mode/json');
     editor.setFontSize(12);
     editor.setOptions({
@@ -110,6 +137,16 @@
     <h2>{selectedFile || 'No file selected'}</h2>
     {#if fileContent && selectedFile}
       <div class="content-actions">
+        <select class="theme-dropdown" bind:value={selectedTheme}>
+          {#each themes as theme}
+            <option value={theme.value}>{theme.label}</option>
+          {/each}
+        </select>
+        <select class="font-size-dropdown" bind:value={fontSize}>
+          {#each fontSizes as size}
+            <option value={size}>{size}px</option>
+          {/each}
+        </select>
         <Button 
           variant="secondary" 
           size="small" 
@@ -173,6 +210,34 @@
   .content-actions {
     display: flex;
     gap: 6px;
+    align-items: center;
+  }
+
+  .theme-dropdown,
+  .font-size-dropdown {
+    background-color: #0f1535;
+    color: #e0e0e0;
+    border: 1px solid #1a2847;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    outline: none;
+  }
+
+  .font-size-dropdown {
+    min-width: 70px;
+  }
+
+  .theme-dropdown:hover,
+  .font-size-dropdown:hover {
+    border-color: #2563eb;
+  }
+
+  .theme-dropdown:focus,
+  .font-size-dropdown:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
   }
 
   .content-body {
@@ -227,10 +292,6 @@
 
   :global(.content-body .ace_editor) {
     font: 'Consolas' sans-serif;
-  }
-
-  :global(.content-body .ace_scroller) {
-    background-color: #0f1535;
   }
 
   :global(.content-body .ace_gutter) {
