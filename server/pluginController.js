@@ -136,6 +136,119 @@ class PluginController {
   }
 
   /**
+   * Process WebSocket upgrade request through plugins
+   * @param {Object} context - Upgrade context
+   * @returns {Object} Decision object
+   */
+  async processWebSocketUpgrade(context) {
+    const { req, config } = context;
+    
+    let decision = {
+      action: 'proxy', // default: proxy the WebSocket
+      websocketConfig: {},
+      metadata: {}
+    };
+
+    // Sort plugins by execution order
+    const sortedPlugins = [...this.plugins].sort((a, b) => {
+      const orderA = this.pluginOrder.indexOf(a.name);
+      const orderB = this.pluginOrder.indexOf(b.name);
+      if (orderA >= 0 && orderB >= 0) return orderA - orderB;
+      if (orderA >= 0) return -1;
+      if (orderB >= 0) return 1;
+      return 0;
+    });
+
+    // Execute enabled plugins
+    for (const plugin of sortedPlugins) {
+      if (!this.enabledPlugins.get(plugin.name)) {
+        continue;
+      }
+
+      try {
+        const pluginConfig = this.getPluginConfig(plugin.name);
+        const result = await plugin.handler({
+          req,
+          requestBody: null,
+          config: pluginConfig,
+          decision: { ...decision }
+        });
+
+        if (result) {
+          decision = { ...decision, ...result };
+          
+          if (result.stopProcessing) {
+            break;
+          }
+        }
+      } catch (error) {
+        console.error(`Error in plugin ${plugin.name}:`, error.message);
+      }
+    }
+
+    return decision;
+  }
+
+  /**
+   * Process WebSocket message through plugins
+   * @param {Object} context - Message context
+   * @returns {Object} Decision object with message modifications
+   */
+  async processWebSocketMessage(context) {
+    const { direction, message, connectionId, config } = context;
+    
+    let decision = {
+      action: 'forward', // default: forward the message
+      modifiedMessage: message,
+      metadata: {}
+    };
+
+    // Sort plugins by execution order
+    const sortedPlugins = [...this.plugins].sort((a, b) => {
+      const orderA = this.pluginOrder.indexOf(a.name);
+      const orderB = this.pluginOrder.indexOf(b.name);
+      if (orderA >= 0 && orderB >= 0) return orderA - orderB;
+      if (orderA >= 0) return -1;
+      if (orderB >= 0) return 1;
+      return 0;
+    });
+
+    // Execute enabled plugins
+    for (const plugin of sortedPlugins) {
+      if (!this.enabledPlugins.get(plugin.name)) {
+        continue;
+      }
+
+      try {
+        const pluginConfig = this.getPluginConfig(plugin.name);
+        
+        // Check if plugin has WebSocket message handler
+        if (plugin.handleWebSocketMessage) {
+          const result = await plugin.handleWebSocketMessage({
+            direction,
+            message: decision.modifiedMessage,
+            connectionId,
+            config: pluginConfig,
+            decision: { ...decision }
+          });
+
+          if (result) {
+            decision = { ...decision, ...result };
+            
+            if (result.stopProcessing || result.action === 'block') {
+              break;
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Error in plugin ${plugin.name} WebSocket handler:`, error.message);
+      }
+    }
+
+    return decision;
+  }
+
+  /**
    * Get list of all plugins with their states
    * @returns {Array} Array of plugin info
    */

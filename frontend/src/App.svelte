@@ -12,6 +12,7 @@
   import CorsPlugin from './views/plugins/CorsPlugin.svelte';
   import MockPlugin from './views/plugins/MockPlugin.svelte';
   import RecorderPlugin from './views/plugins/RecorderPlugin.svelte';
+  import WebSocketPlugin from './views/plugins/WebSocketPlugin.svelte';
   import { currentRoute, routes, allRoutes } from './stores/router.js';
   import { fetchPlugins } from './stores/plugins.js';
 
@@ -24,7 +25,8 @@
     logger: LoggerPlugin,
     cors: CorsPlugin,
     mock: MockPlugin,
-    recorder: RecorderPlugin
+    recorder: RecorderPlugin,
+    websocket: WebSocketPlugin
   };
 
   $: sidebarItems = [

@@ -1,13 +1,16 @@
 import express from 'express';
 import httpProxy from 'http-proxy';
 import cors from 'cors';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs';
+import { writeFile, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { WebSocketServer, WebSocket } from 'ws';
 import { pluginController } from './pluginController.js';
 import { setupApiRoutes } from './routes/api.js';
 import { setupRulesRoutes } from './routes/rules.js';
 import { setupRecordingsRoutes } from './routes/recordings.js';
+import { setupWebSocketRoutes } from './routes/websocket.js';
 import { loadState, saveState, getActiveConfigSet } from './stateManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -86,10 +89,20 @@ app.use((req, res, next) => {
   });
 });
 
+// WebSocket connection tracking (will be initialized after server creation)
+let wsConnections;
+let wsMessageLog;
+
+// Initialize WebSocket connection tracking
+wsConnections = new Map(); // connectionId -> connection metadata
+wsMessageLog = []; // Circular buffer for recent messages
+const MAX_MESSAGE_LOG = 10000;
+
 // Setup API routes
 app.use('/__api', setupApiRoutes(pluginController, state));
 app.use('/__api/rules', setupRulesRoutes(pluginController, state));
 app.use('/__api/recordings', setupRecordingsRoutes());
+app.use('/__api/websocket', setupWebSocketRoutes(wsConnections, wsMessageLog, state));
 
 // Proxy error handling
 proxy.on('error', (err, req, res) => {
@@ -280,8 +293,287 @@ proxy.on('proxyRes', (proxyRes, req, res) => {
 const PORT = state.proxyPort || 8079;
 const activeConfigSet = getActiveConfigSet(state);
 
-app.listen(PORT, () => {
+// Generate unique connection ID
+function generateConnectionId() {
+  return `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// WebSocket upgrade handler
+const server = app.listen(PORT, () => {
   console.log(`Proxy server listening on port ${PORT}`);
   console.log(`Active config set: ${activeConfigSet.name}`);
   console.log(`Forwarding requests to ${activeConfigSet.targetUrl}`);
 });
+
+// Helper to add message to log
+function logWebSocketMessage(connectionId, direction, data) {
+  const wsConfig = state.websocketConfig || {};
+  const conn = wsConnections.get(connectionId);
+  
+  if (!conn) return;
+  
+  // Update connection stats
+  if (direction === 'client-to-server') {
+    conn.messagesSent++;
+  } else {
+    conn.messagesReceived++;
+  }
+  conn.lastActivity = new Date().toISOString();
+  
+  // Log to console if enabled
+  if (wsConfig.logMessages) {
+    const size = Buffer.isBuffer(data) ? data.length : data.toString().length;
+    const arrow = direction === 'client-to-server' ? '→' : '←';
+    debugLog(`📨 [WS] ${arrow} ${connectionId}: ${size} bytes`);
+  }
+  
+  // Add to message log
+  const messageData = Buffer.isBuffer(data) ? data.toString('utf8') : data.toString();
+  let contentType = 'text';
+  let parsedMessage = messageData;
+  
+  // Try to parse as JSON
+  try {
+    parsedMessage = JSON.parse(messageData);
+    contentType = 'json';
+  } catch (e) {
+    // Not JSON, keep as text
+  }
+  
+  const timestamp = new Date().toISOString();
+  const message = {
+    id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    connectionId,
+    direction,
+    timestamp,
+    size: messageData.length,
+    preview: messageData.substring(0, 100),
+    contentType,
+    message: parsedMessage
+  };
+  
+  wsMessageLog.push(message);
+  
+  // Keep circular buffer size
+  if (wsMessageLog.length > MAX_MESSAGE_LOG) {
+    wsMessageLog.shift();
+  }
+  
+  // Record to disk if enabled
+  if (wsConfig.recordMessages) {
+    // Use async file operations to avoid blocking WebSocket I/O
+    (async () => {
+      try {
+        // Build filename: WS_{direction}_{YYYYMMDD}_{HHMMSS}_{mmm}.json
+        const directionCode = direction === 'client-to-server' ? 'C2S' : 'S2C';
+        const now = new Date();
+        const fileTimestamp = now.toISOString()
+          .replace(/[-:]/g, '')
+          .replace('T', '_')
+          .replace('.', '_')
+          .replace('Z', '');
+        const filename = `WS_${directionCode}_${fileTimestamp}.json`;
+        
+        // Build directory path: recordings/active/websocket/{pathname}
+        const pathname = conn.url.startsWith('/') ? conn.url.slice(1) : conn.url;
+        const wsPath = pathname || 'root';
+        const recordingsDir = join(__dirname, '..', 'recordings', 'active', 'websocket', wsPath);
+        
+        // Create directory if it doesn't exist
+        await mkdir(recordingsDir, { recursive: true });
+        
+        // Build recording object
+        const recording = {
+          connectionId,
+          url: conn.url,
+          direction,
+          timestamp,
+          connectedAt: conn.connectedAt,
+          messageType: contentType,
+          size: messageData.length,
+          message: parsedMessage,
+          metadata: {
+            messageNumber: direction === 'client-to-server' ? conn.messagesSent : conn.messagesReceived,
+            encoding: 'utf-8'
+          }
+        };
+        
+        // Write to file
+        const filepath = join(recordingsDir, filename);
+        await writeFile(filepath, JSON.stringify(recording, null, 2), 'utf8');
+        debugLog(`💾 [WS] Recorded message to ${filepath}`);
+      } catch (err) {
+        console.error(`❌ [WS] Failed to record message: ${err.message}`);
+        console.error(err.stack);
+      }
+    })().catch(err => {
+      console.error(`❌ [WS] Unhandled recording error: ${err.message}`);
+      console.error(err.stack);
+    });
+  }
+}
+
+server.on('upgrade', async (req, socket, head) => {
+  debugLog(`🔌 [WS] Upgrade request for ${req.url}`);
+  
+  try {
+    // Execute plugin pipeline for WebSocket upgrade
+    const decision = await pluginController.processWebSocketUpgrade({
+      req,
+      config: getActiveConfigSet(state)
+    });
+    
+    // Check if connection should be blocked
+    if (decision.action === 'block') {
+      debugLog(`🚫 [WS] Connection blocked by plugin`);
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    
+    // Check connection limit
+    const wsConfig = state.websocketConfig || {};
+    const maxConnections = wsConfig.maxConnections || 100;
+    if (wsConnections.size >= maxConnections) {
+      debugLog(`🚫 [WS] Connection limit reached (${maxConnections})`);
+      socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    
+    // Generate connection ID
+    const connectionId = generateConnectionId();
+    
+    // Track connection
+    wsConnections.set(connectionId, {
+      id: connectionId,
+      url: req.url,
+      connectedAt: new Date().toISOString(),
+      messagesReceived: 0,
+      messagesSent: 0,
+      lastActivity: new Date().toISOString()
+    });
+    
+    debugLog(`✓ [WS] Connection established: ${connectionId}`);
+    
+    // Get target URL from active config
+    const targetUrl = new URL(getActiveConfigSet(state).targetUrl);
+    const targetWsUrl = `${targetUrl.protocol === 'https:' ? 'wss:' : 'ws:'}//${targetUrl.host}${req.url}`;
+    debugLog(`🎯 [WS] Target URL: ${getActiveConfigSet(state).targetUrl} -> ${targetWsUrl}`);
+    
+    // Create WebSocket server to handle the upgrade
+    const wss = new WebSocketServer({ noServer: true });
+    
+    // Handle the upgrade manually
+    wss.handleUpgrade(req, socket, head, (clientWs) => {
+      debugLog(`✓ [WS] Client WebSocket created for ${connectionId}`);
+      
+      // Connect to target server
+      const serverWs = new WebSocket(targetWsUrl, {
+        headers: req.headers,
+        rejectUnauthorized: false // Allow self-signed certificates
+      });
+      
+      // Client -> Server
+      clientWs.on('message', async (data, isBinary) => {
+        try {
+          // Log the message
+          logWebSocketMessage(connectionId, 'client-to-server', data);
+          
+          // Process through plugin pipeline (for future message modification)
+          const decision = await pluginController.processWebSocketMessage({
+            direction: 'client-to-server',
+            message: data,
+            connectionId,
+            config: wsConfig
+          });
+          
+          // Forward to server (use modified message if available)
+          const messageToSend = decision.modifiedMessage || data;
+          if (serverWs.readyState === WebSocket.OPEN && decision.action !== 'block') {
+            serverWs.send(messageToSend, { binary: isBinary });
+          }
+        } catch (err) {
+          console.error(`Error processing client message for ${connectionId}:`, err.message);
+        }
+      });
+      
+      // Server -> Client
+      serverWs.on('message', async (data, isBinary) => {
+        try {
+          // Log the message
+          logWebSocketMessage(connectionId, 'server-to-client', data);
+          
+          // Process through plugin pipeline (for future message modification)
+          const decision = await pluginController.processWebSocketMessage({
+            direction: 'server-to-client',
+            message: data,
+            connectionId,
+            config: wsConfig
+          });
+          
+          // Forward to client (use modified message if available)
+          const messageToSend = decision.modifiedMessage || data;
+          if (clientWs.readyState === WebSocket.OPEN && decision.action !== 'block') {
+            clientWs.send(messageToSend, { binary: isBinary });
+          }
+        } catch (err) {
+          console.error(`Error processing server message for ${connectionId}:`, err.message);
+        }
+      });
+      
+      // Handle connection open
+      serverWs.on('open', () => {
+        debugLog(`✓ [WS] Connected to target server for ${connectionId}`);
+      });
+      
+      // Handle errors
+      clientWs.on('error', (err) => {
+        debugLog(`❌ [WS] Client error for ${connectionId}:`, err.message);
+        // Clean up connection on error
+        wsConnections.delete(connectionId);
+        if (serverWs.readyState === WebSocket.OPEN) {
+          serverWs.close(1000);
+        }
+      });
+      
+      serverWs.on('error', (err) => {
+        debugLog(`❌ [WS] Server error for ${connectionId}:`, err.message);
+        // Clean up connection on error
+        wsConnections.delete(connectionId);
+        if (clientWs.readyState === WebSocket.OPEN) {
+          clientWs.close(1000);
+        }
+      });
+      
+      // Handle connection close
+      clientWs.on('close', (code, reason) => {
+        debugLog(`🔌 [WS] Client closed ${connectionId}: ${code} ${reason}`);
+        if (serverWs.readyState === WebSocket.OPEN || serverWs.readyState === WebSocket.CONNECTING) {
+          // Use valid close code (1000-4999), fallback to 1000 for normal closure
+          const closeCode = (code >= 1000 && code < 5000) ? code : 1000;
+          serverWs.close(closeCode, reason);
+        }
+        wsConnections.delete(connectionId);
+      });
+      
+      serverWs.on('close', (code, reason) => {
+        debugLog(`🔌 [WS] Server closed ${connectionId}: ${code} ${reason}`);
+        if (clientWs.readyState === WebSocket.OPEN) {
+          // Use valid close code (1000-4999), fallback to 1000 for normal closure
+          const closeCode = (code >= 1000 && code < 5000) ? code : 1000;
+          clientWs.close(closeCode, reason);
+        }
+        wsConnections.delete(connectionId);
+      });
+    });
+    
+  } catch (err) {
+    console.error('WebSocket upgrade error:', err.message);
+    socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n');
+    socket.destroy();
+  }
+});
+
+// Export for WebSocket routes
+export { wsConnections, wsMessageLog };

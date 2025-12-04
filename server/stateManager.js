@@ -21,7 +21,15 @@ const DEFAULT_STATE = {
     }
   ],
   activeConfigSet: 'default',
-  activeRulesSet: 'active'
+  activeRulesSet: 'active',
+  websocketConfig: {
+    enabled: false,
+    logMessages: true,
+    recordMessages: false,
+    maxConnections: 100,
+    maxMessageSize: 1048576,
+    modificationRules: []
+  }
 };
 
 /**
@@ -117,4 +125,24 @@ export function getActiveConfigSet(state) {
   
   const activeSet = state.configSets.find(s => s.id === state.activeConfigSet);
   return activeSet || state.configSets[0];
+}
+
+/**
+ * Get WebSocket configuration
+ * @param {object} state - State object
+ * @returns {object} WebSocket config
+ */
+export function getWebSocketConfig(state) {
+  return state.websocketConfig || DEFAULT_STATE.websocketConfig;
+}
+
+/**
+ * Update WebSocket configuration
+ * @param {object} currentState - Current state object
+ * @param {object} updates - WebSocket config updates
+ * @returns {object} Updated state
+ */
+export function updateWebSocketConfig(currentState, updates) {
+  const websocketConfig = { ...getWebSocketConfig(currentState), ...updates };
+  return updateState(currentState, { websocketConfig });
 }

@@ -1,30 +1,56 @@
 <script>
+  import { createEventDispatcher } from 'svelte';
+  
   export let id = '';
   export let checked = false;
   export let disabled = false;
+  export let label = '';
+  
+  const dispatch = createEventDispatcher();
+  
+  function handleChange(e) {
+    dispatch('change', checked);
+  }
 </script>
 
-<label class="checkbox-container" class:disabled>
+<label class="checkbox-container" class:disabled class:has-label={label || $$slots.default}>
   <input
     {id}
     type="checkbox"
     bind:checked
     {disabled}
-    on:change
+    on:change={handleChange}
     class="checkbox-atom"
   />
   <span class="checkmark" class:checked></span>
+  {#if label || $$slots.default}
+    <span class="checkbox-label">
+      {#if label}
+        {label}
+      {:else}
+        <slot />
+      {/if}
+    </span>
+  {/if}
 </label>
 
 <style>
   .checkbox-container {
     position: relative;
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    gap: 12px;
+    min-height: 40px;
+  }
+
+  .checkbox-container.has-label {
+    width: auto;
+  }
+
+  .checkbox-container:not(.has-label) {
     width: 40px;
     height: 40px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
     justify-content: center;
   }
 
@@ -37,9 +63,16 @@
     position: absolute;
     opacity: 0;
     cursor: pointer;
-    width: 100%;
-    height: 100%;
+    width: 25px;
+    height: 25px;
     z-index: 1;
+  }
+
+  .checkbox-label {
+    color: #e5e7eb;
+    font-size: 14px;
+    user-select: none;
+    flex: 1;
   }
 
   .checkbox-atom:disabled {

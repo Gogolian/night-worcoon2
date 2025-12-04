@@ -22,7 +22,8 @@ export default {
   },
   handler: async ({ req, requestBody, config, decision }) => {
     const timestamp = new Date().toISOString();
-    console.log(`[${timestamp}] ${req.method} ${req.url} - Body: ${requestBody.length} bytes`);
+    const bodyLength = requestBody ? requestBody.length : 0;
+    console.log(`[${timestamp}] ${req.method} ${req.url} - Body: ${bodyLength} bytes`);
     
     return {
       metadata: {
