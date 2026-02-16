@@ -461,18 +461,100 @@ server.on('upgrade', async (req, socket, head) => {
     const targetWsUrl = `${targetUrl.protocol === 'https:' ? 'wss:' : 'ws:'}//${targetUrl.host}${req.url}`;
     debugLog(`🎯 [WS] Target URL: ${getActiveConfigSet(state).targetUrl} -> ${targetWsUrl}`);
     
-    // Create WebSocket server to handle the upgrade
-    const wss = new WebSocketServer({ noServer: true });
+    // Extract subprotocols from request headers (e.g., 'v12.stomp')
+    const requestedProtocols = req.headers['sec-websocket-protocol'] 
+      ? req.headers['sec-websocket-protocol'].split(',').map(p => p.trim())
+      : [];
+    
+    // Create WebSocket server to handle the upgrade with protocol negotiation
+    const wss = new WebSocketServer({ 
+      noServer: true,
+      handleProtocols: (protocols, request) => {
+        // Accept the first requested protocol (or return false to reject)
+        const selected = protocols.size > 0 ? protocols.values().next().value : false;
+        debugLog(`📋 [WS] Protocol negotiation: requested=${[...protocols].join(',')}, selected=${selected}`);
+        return selected;
+      }
+    });
     
     // Handle the upgrade manually
     wss.handleUpgrade(req, socket, head, (clientWs) => {
-      debugLog(`✓ [WS] Client WebSocket created for ${connectionId}`);
+      debugLog(`✓ [WS] Client WebSocket created for ${connectionId}, protocol: ${clientWs.protocol}`);
       
-      // Connect to target server
-      const serverWs = new WebSocket(targetWsUrl, {
-        headers: req.headers,
+      // Prepare headers to forward - filter out WebSocket-specific headers that shouldn't be forwarded
+      const headersToForward = {};
+      const headersToSkip = [
+        'host', 
+        'upgrade', 
+        'connection', 
+        'sec-websocket-key', 
+        'sec-websocket-version', 
+        'sec-websocket-extensions',
+        'sec-websocket-protocol' // Will be passed separately as protocol option
+      ];
+      
+      for (const [key, value] of Object.entries(req.headers)) {
+        if (!headersToSkip.includes(key.toLowerCase())) {
+          headersToForward[key] = value;
+        }
+      }
+      
+      // Set the correct Host header for the target server
+      headersToForward['Host'] = targetUrl.host;
+      
+      // Update Origin header to match the target server (required for CORS)
+      headersToForward['Origin'] = `${targetUrl.protocol}//${targetUrl.host}`;
+      
+      // Apply custom request headers from active config set
+      const activeConfig = getActiveConfigSet(state);
+      if (activeConfig.requestHeaders) {
+        debugLog(`📋 [WS] Applying config request headers:`, activeConfig.requestHeaders);
+        Object.assign(headersToForward, activeConfig.requestHeaders);
+      }
+      
+      debugLog(`📋 [WS] Headers to forward:`, headersToForward);
+      
+      if (requestedProtocols.length > 0) {
+        debugLog(`📋 [WS] Subprotocols to negotiate: ${requestedProtocols.join(', ')}`);
+      }
+      
+      // Connect to target server with same subprotocols
+      const serverWs = new WebSocket(targetWsUrl, requestedProtocols.length > 0 ? requestedProtocols : undefined, {
+        headers: headersToForward,
         rejectUnauthorized: false // Allow self-signed certificates
       });
+      
+      // Message queue for buffering messages until server connection is ready
+      const pendingMessages = [];
+      let serverReady = false;
+      
+      // Helper to send message to server (with queueing if not ready)
+      const sendToServer = (data, isBinary, decision) => {
+        const messageToSend = decision.modifiedMessage || data;
+        if (decision.action === 'block') return;
+        
+        if (serverReady && serverWs.readyState === WebSocket.OPEN) {
+          serverWs.send(messageToSend, { binary: isBinary });
+          debugLog(`📤 [WS] Forwarded to server: ${messageToSend.length || messageToSend.byteLength} bytes`);
+        } else {
+          // Queue message for later
+          pendingMessages.push({ data: messageToSend, isBinary });
+          debugLog(`📥 [WS] Queued message (server not ready): ${pendingMessages.length} pending`);
+        }
+      };
+      
+      // Flush pending messages when server is ready
+      const flushPendingMessages = () => {
+        if (pendingMessages.length > 0) {
+          debugLog(`📤 [WS] Flushing ${pendingMessages.length} pending messages`);
+          while (pendingMessages.length > 0) {
+            const { data, isBinary } = pendingMessages.shift();
+            if (serverWs.readyState === WebSocket.OPEN) {
+              serverWs.send(data, { binary: isBinary });
+            }
+          }
+        }
+      };
       
       // Client -> Server
       clientWs.on('message', async (data, isBinary) => {
@@ -488,11 +570,8 @@ server.on('upgrade', async (req, socket, head) => {
             config: wsConfig
           });
           
-          // Forward to server (use modified message if available)
-          const messageToSend = decision.modifiedMessage || data;
-          if (serverWs.readyState === WebSocket.OPEN && decision.action !== 'block') {
-            serverWs.send(messageToSend, { binary: isBinary });
-          }
+          // Forward to server (queued if not ready)
+          sendToServer(data, isBinary, decision);
         } catch (err) {
           console.error(`Error processing client message for ${connectionId}:`, err.message);
         }
@@ -516,6 +595,7 @@ server.on('upgrade', async (req, socket, head) => {
           const messageToSend = decision.modifiedMessage || data;
           if (clientWs.readyState === WebSocket.OPEN && decision.action !== 'block') {
             clientWs.send(messageToSend, { binary: isBinary });
+            debugLog(`📤 [WS] Forwarded to client: ${messageToSend.length || messageToSend.byteLength} bytes`);
           }
         } catch (err) {
           console.error(`Error processing server message for ${connectionId}:`, err.message);
@@ -525,6 +605,8 @@ server.on('upgrade', async (req, socket, head) => {
       // Handle connection open
       serverWs.on('open', () => {
         debugLog(`✓ [WS] Connected to target server for ${connectionId}`);
+        serverReady = true;
+        flushPendingMessages();
       });
       
       // Handle errors
@@ -538,7 +620,8 @@ server.on('upgrade', async (req, socket, head) => {
       });
       
       serverWs.on('error', (err) => {
-        debugLog(`❌ [WS] Server error for ${connectionId}:`, err.message);
+        console.log(`❌ [WS] Server error for ${connectionId}:`, err.message);
+        console.log(`❌ [WS] Target URL was: ${targetWsUrl}`);
         // Clean up connection on error
         wsConnections.delete(connectionId);
         if (clientWs.readyState === WebSocket.OPEN) {
@@ -546,12 +629,37 @@ server.on('upgrade', async (req, socket, head) => {
         }
       });
       
+      // Handle unexpected HTTP responses (non-101)
+      serverWs.on('unexpected-response', (req, res) => {
+        console.log(`❌ [WS] Unexpected response for ${connectionId}: ${res.statusCode} ${res.statusMessage}`);
+        console.log(`❌ [WS] Target URL was: ${targetWsUrl}`);
+        console.log(`❌ [WS] Request headers sent:`, headersToForward);
+        
+        // Read response body for more details
+        let body = '';
+        res.on('data', chunk => body += chunk);
+        res.on('end', () => {
+          if (body) {
+            console.log(`❌ [WS] Response body: ${body.substring(0, 500)}`);
+          }
+        });
+      });
+      
+      // Helper to get a valid close code (some codes like 1005, 1006 are reserved and cannot be sent)
+      const getValidCloseCode = (code) => {
+        // Reserved codes that MUST NOT be sent: 1004, 1005, 1006, 1014, 1015
+        const reservedCodes = [1004, 1005, 1006, 1014, 1015];
+        if (reservedCodes.includes(code) || code < 1000 || code >= 5000) {
+          return 1000; // Normal closure
+        }
+        return code;
+      };
+      
       // Handle connection close
       clientWs.on('close', (code, reason) => {
         debugLog(`🔌 [WS] Client closed ${connectionId}: ${code} ${reason}`);
         if (serverWs.readyState === WebSocket.OPEN || serverWs.readyState === WebSocket.CONNECTING) {
-          // Use valid close code (1000-4999), fallback to 1000 for normal closure
-          const closeCode = (code >= 1000 && code < 5000) ? code : 1000;
+          const closeCode = getValidCloseCode(code);
           serverWs.close(closeCode, reason);
         }
         wsConnections.delete(connectionId);
@@ -560,8 +668,7 @@ server.on('upgrade', async (req, socket, head) => {
       serverWs.on('close', (code, reason) => {
         debugLog(`🔌 [WS] Server closed ${connectionId}: ${code} ${reason}`);
         if (clientWs.readyState === WebSocket.OPEN) {
-          // Use valid close code (1000-4999), fallback to 1000 for normal closure
-          const closeCode = (code >= 1000 && code < 5000) ? code : 1000;
+          const closeCode = getValidCloseCode(code);
           clientWs.close(closeCode, reason);
         }
         wsConnections.delete(connectionId);
