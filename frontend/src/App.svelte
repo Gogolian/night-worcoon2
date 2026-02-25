@@ -5,6 +5,7 @@
   import MainContent from './components/organisms/MainContent.svelte';
   import Toast from './components/molecules/Toast.svelte';
   import Dashboard from './views/Dashboard.svelte';
+  import Logs from './views/Logs.svelte';
   import Recordings from './views/Recordings.svelte';
   import Plugins from './views/Plugins.svelte';
   import Settings from './views/Settings.svelte';
@@ -30,9 +31,10 @@
   };
 
   $: sidebarItems = [
-    { ...routes.dashboard, active: routes.dashboard.id === $currentRoute },
+    { ...routes.dashboard,  active: routes.dashboard.id  === $currentRoute },
+    { ...routes.logs,       active: routes.logs.id       === $currentRoute },
     { ...routes.recordings, active: routes.recordings.id === $currentRoute },
-    { ...routes.plugins, active: routes.plugins.id === $currentRoute },
+    { ...routes.plugins,    active: routes.plugins.id    === $currentRoute },
     // Add all plugins under Plugins section (enabled and disabled)
     ...Object.values($allRoutes)
       .filter(route => route.isPlugin)
@@ -58,6 +60,8 @@
     switch ($currentRoute) {
       case 'dashboard':
         return Dashboard;
+      case 'logs':
+        return Logs;
       case 'recordings':
         return Recordings;
       case 'plugins':

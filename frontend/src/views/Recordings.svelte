@@ -4,6 +4,7 @@
   import RecordingsList from '../components/organisms/RecordingsList.svelte';
   import FileContentEditor from '../components/organisms/FileContentEditor.svelte';
   import { toast } from '../stores/toast.js';
+  import { activeRecordingsFolder, prefetchTopLevel } from '../stores/recordingsDirs.js';
 
   let folders = [];
   let selectedFolder = 'active';
@@ -20,6 +21,8 @@
   onMount(async () => {
     await loadFolders();
     await loadFiles();
+    activeRecordingsFolder.set(selectedFolder);
+    prefetchTopLevel(selectedFolder);
   });
 
   async function loadFolders() {
@@ -173,6 +176,8 @@
 
   $: if (selectedFolder) {
     loadFiles();
+    activeRecordingsFolder.set(selectedFolder);
+    prefetchTopLevel(selectedFolder);
   }
 
   $: if (filterText !== undefined) {

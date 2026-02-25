@@ -1,6 +1,9 @@
 <script>
   import { onMount } from 'svelte';
+  import { get } from 'svelte/store';
   import { plugins, togglePlugin } from '../../stores/plugins.js';
+  import { activeRecordingsFolder, prefetchTopLevel } from '../../stores/recordingsDirs.js';
+  import { pendingMockEntry } from '../../stores/logs.js';
   import PluginHeader from '../../components/organisms/PluginHeader.svelte';
   import PluginSection from '../../components/molecules/PluginSection.svelte';
   import RuleSetManager from '../../components/organisms/RuleSetManager.svelte';
@@ -20,6 +23,34 @@
     await loadAvailableSets();
     await loadServerConfig();
     await loadActiveConfig();
+
+    // If a log entry is pending (user clicked "Mock" from Logs view), pre-fill a rule
+    const pending = get(pendingMockEntry);
+    if (pending) {
+      pendingMockEntry.set(null);
+      try {
+        const u = new URL(pending.request.url, 'http://x');
+        const pathname = u.pathname;
+        const bodyStr = pending.response.body || '{}';
+        // Validate / pretty-print body
+        let prettyBody = bodyStr;
+        try { prettyBody = JSON.stringify(JSON.parse(bodyStr), null, 2); } catch {}
+        const newRule = {
+          method: [pending.request.method],
+          url: pathname,
+          action: 'RET_INLINE',
+          inlineResponse: {
+            statusCode: pending.response.status || 200,
+            headers: {},
+            body: prettyBody
+          }
+        };
+        rules = [newRule, ...rules];
+        await saveActiveRuleSet();
+      } catch (err) {
+        console.error('Failed to create rule from log entry:', err);
+      }
+    }
   });
 
   async function loadServerConfig() {
@@ -58,6 +89,8 @@
       fallback = data.fallback || 'PASS';
       fallback_fallback = data.fallback_fallback || 'PASS';
       recordingsFolder = data.recordingsFolder || 'active';
+      activeRecordingsFolder.set(recordingsFolder);
+      prefetchTopLevel(recordingsFolder);
     } catch (err) {
       console.error('Failed to load active config:', err);
     }
@@ -74,6 +107,8 @@
       fallback_fallback = data.fallback_fallback || 'PASS';
       recordingsFolder = data.recordingsFolder || 'active';
       currentSetName = name;
+      activeRecordingsFolder.set(recordingsFolder);
+      prefetchTopLevel(recordingsFolder);
       
       // Save the active rules set to state
       await fetch('/__api/config', {
@@ -140,6 +175,17 @@
 
   async function updateRuleAction(index, action) {
     rules[index].action = action;
+    // When switching to RET_INLINE, seed an empty inlineResponse if not present
+    if (action === 'RET_INLINE' && !rules[index].inlineResponse) {
+      rules[index].inlineResponse = { statusCode: 200, headers: {}, body: '{}' };
+    }
+    rules = [...rules];
+    await saveActiveRuleSet();
+  }
+
+  async function updateRuleInlineResponse(index, inlineResponse) {
+    rules[index].inlineResponse = inlineResponse;
+    rules = [...rules];
     await saveActiveRuleSet();
   }
 
@@ -155,6 +201,8 @@
 
   async function updateRecordingsFolder(folder) {
     recordingsFolder = folder;
+    activeRecordingsFolder.set(folder);
+    prefetchTopLevel(folder);
     await saveActiveRuleSet();
   }
 </script>
@@ -182,6 +230,7 @@
         onUpdateMethod={updateRuleMethod}
         onUpdateUrl={updateRuleUrl}
         onUpdateAction={updateRuleAction}
+        onUpdateInlineResponse={updateRuleInlineResponse}
       />
     </PluginSection>
 

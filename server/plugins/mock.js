@@ -142,11 +142,40 @@ function matchRule(req, rule) {
 }
 
 /**
- * Execute an action (RET_REC or PASS)
+ * Execute an action (RET_REC, RET_INLINE, or PASS)
+ * @param {string} action
+ * @param {string} fallbackFallback
+ * @param {object} req
+ * @param {Buffer} requestBody
+ * @param {string} recordingsFolder
+ * @param {object|null} rule - The matched rule (needed for RET_INLINE inlineResponse)
  */
-function executeAction(action, fallbackFallback, req, requestBody, recordingsFolder) {
+function executeAction(action, fallbackFallback, req, requestBody, recordingsFolder, rule) {
   if (action === 'PASS') {
     // Let the request pass through to target server
+    return null;
+  }
+
+  if (action === 'RET_INLINE') {
+    const inline = rule && rule.inlineResponse;
+    if (inline) {
+      console.log(`🎭 Mock: Returning inline response for ${req.method} ${req.url}`);
+      return {
+        action: 'mock',
+        mock: {
+          statusCode: inline.statusCode || 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Mock-Source': 'inline',
+            'AAmocked': ' ~~~~~ SUCCESSFULLY MOCKED BY NWC2 ~~~~~ ',
+            ...(inline.headers || {})
+          },
+          body: inline.body || '{}'
+        }
+      };
+    }
+    // No inline response configured — fall through to pass
+    console.log(`🎭 Mock: RET_INLINE rule has no inlineResponse for ${req.method} ${req.url}, passing through`);
     return null;
   }
   
@@ -276,6 +305,22 @@ export default {
     }
     
     // Execute the action
-    return executeAction(action, ruleFallbackFallback, req, requestBody, recordingsFolder);
+    const result = executeAction(action, ruleFallbackFallback, req, requestBody, recordingsFolder, matchedRule);
+
+    // Attach structured metadata for the log system (via metadata so pluginController merges it)
+    const ruleMatched = matchedRule ? (matchedRule.name || matchedRule.url || null) : null;
+
+    if (result) {
+      const mockSource = result.mock?.headers?.['X-Mock-Source'] || null;
+      return {
+        ...result,
+        metadata: { ruleMatched, mockSource }
+      };
+    }
+
+    // PASS — return metadata only; proxy path will handle it
+    return {
+      metadata: { ruleMatched, mockSource: null }
+    };
   }
 };

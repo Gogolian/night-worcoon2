@@ -1,6 +1,6 @@
 <script>
   import Label from '../atoms/Label.svelte';
-  import Input from '../atoms/Input.svelte';
+  import MatchRecordingUrlInput from '../atoms/MatchRecordingUrlInput.svelte';
 
   export let folders = [];
   export let selectedFolder = 'active';
@@ -29,12 +29,10 @@
 
   <div class="control-group">
     <Label htmlFor="filter-input" text="Filter Files" />
-    <Input
-      id="filter-input"
-      type="text"
-      placeholder="Type to filter... e.g., bff/one/etc or POST"
-      bind:value={filterText}
-      disabled={loading}
+    <MatchRecordingUrlInput
+      value={filterText}
+      showFiles={true}
+      onInput={(e) => (filterText = e.target.value)}
     />
   </div>
 </div>

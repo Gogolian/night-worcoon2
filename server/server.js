@@ -11,7 +11,9 @@ import { setupApiRoutes } from './routes/api.js';
 import { setupRulesRoutes } from './routes/rules.js';
 import { setupRecordingsRoutes } from './routes/recordings.js';
 import { setupWebSocketRoutes } from './routes/websocket.js';
+import { setupLogsRoutes } from './routes/logs.js';
 import { loadState, saveState, getActiveConfigSet } from './stateManager.js';
+import { logManager } from './logManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -103,6 +105,7 @@ app.use('/__api', setupApiRoutes(pluginController, state));
 app.use('/__api/rules', setupRulesRoutes(pluginController, state));
 app.use('/__api/recordings', setupRecordingsRoutes());
 app.use('/__api/websocket', setupWebSocketRoutes(wsConnections, wsMessageLog, state));
+app.use('/__api/logs', setupLogsRoutes(logManager));
 
 // Proxy error handling
 proxy.on('error', (err, req, res) => {
@@ -121,6 +124,9 @@ app.all('*', async (req, res) => {
 
   debugLog(`\n🔄 [${req.method}] Processing ${req.path}`);
   debugLog(`📊 [${req.method}] Body size: ${req.rawBody ? req.rawBody.length : 0} bytes`);
+
+  // Timestamp for latency calculation
+  req._logStart = Date.now();
   
   // Process request through plugin controller
   debugLog(`🔌 [${req.method}] Processing through plugins...`);
@@ -144,6 +150,31 @@ app.all('*', async (req, res) => {
     }
     
     res.send(decision.mock.body || '');
+
+    // Log mock entry
+    const mockBodyStr = decision.mock.body != null ? String(decision.mock.body) : null;
+    logManager.addEntry({
+      id: logManager.makeId(),
+      timestamp: new Date().toISOString(),
+      latency: Date.now() - (req._logStart || Date.now()),
+      request: {
+        method: req.method,
+        url: req.url,
+        headers: req.headers,
+        body: logManager.truncateBody(req.rawBody && req.rawBody.length > 0 ? req.rawBody.toString('utf8') : null)
+      },
+      response: {
+        status: decision.mock.statusCode || 200,
+        headers: decision.mock.headers || {},
+        body: logManager.truncateBody(mockBodyStr),
+        size: mockBodyStr ? Buffer.byteLength(mockBodyStr) : 0
+      },
+      appInfo: {
+        action: 'mock',
+        ruleMatched: decision.metadata?.ruleMatched || null,
+        mockSource: decision.metadata?.mockSource || null
+      }
+    });
     return;
   }
 
@@ -218,10 +249,47 @@ proxy.on('proxyRes', (proxyRes, req, res) => {
   debugLog(`🔍 [${req.method}] Should modify response: ${!!shouldModifyResponse}`);
   
   if (!shouldModifyResponse) {
-    // No modifications needed, stream directly to client
-    debugLog(`⚡ [${req.method}] Streaming response directly to client`);
-    res.writeHead(proxyRes.statusCode, proxyRes.headers);
-    proxyRes.pipe(res);
+    // Buffer response so we can log it, then forward to client
+    debugLog(`⚡ [${req.method}] Buffering proxy response for logging`);
+    const logChunks = [];
+    proxyRes.on('data', c => logChunks.push(c));
+    proxyRes.on('end', () => {
+      const responseBody = Buffer.concat(logChunks);
+      // Log the proxied exchange
+      logManager.addEntry({
+        id: logManager.makeId(),
+        timestamp: new Date().toISOString(),
+        latency: Date.now() - (req._logStart || Date.now()),
+        request: {
+          method: req.method,
+          url: req.url,
+          headers: req.headers,
+          body: logManager.truncateBody(req.rawBody && req.rawBody.length > 0 ? req.rawBody.toString('utf8') : null)
+        },
+        response: {
+          status: proxyRes.statusCode,
+          headers: proxyRes.headers,
+          body: logManager.truncateBody(responseBody.length > 0 ? responseBody.toString('utf8') : null),
+          size: responseBody.length
+        },
+        appInfo: {
+          action: 'proxy',
+          ruleMatched: decision?.metadata?.ruleMatched || null,
+          mockSource: null
+        }
+      });
+      if (!res.headersSent) {
+        res.writeHead(proxyRes.statusCode, proxyRes.headers);
+        res.end(responseBody);
+      }
+    });
+    proxyRes.on('error', err => {
+      console.error('ProxyRes stream error (no-modify path):', err.message);
+      if (!res.headersSent) {
+        res.writeHead(502, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Proxy Response Error', message: err.message }));
+      }
+    });
     return;
   }
   
@@ -263,6 +331,30 @@ proxy.on('proxyRes', (proxyRes, req, res) => {
       if (finalBody !== responseBody) {
         finalHeaders['content-length'] = Buffer.byteLength(finalBody);
       }
+
+      // Log the proxied exchange (recorder path - response body is available)
+      logManager.addEntry({
+        id: logManager.makeId(),
+        timestamp: new Date().toISOString(),
+        latency: Date.now() - (req._logStart || Date.now()),
+        request: {
+          method: req.method,
+          url: req.url,
+          headers: req.headers,
+          body: logManager.truncateBody(req.rawBody && req.rawBody.length > 0 ? req.rawBody.toString('utf8') : null)
+        },
+        response: {
+          status: finalStatusCode,
+          headers: finalHeaders,
+          body: logManager.truncateBody(finalBody.length > 0 ? finalBody.toString('utf8') : null),
+          size: finalBody.length
+        },
+        appInfo: {
+          action: 'proxy',
+          ruleMatched: decision?.metadata?.ruleMatched || null,
+          mockSource: null
+        }
+      });
 
       // Write final response
       if (!res.headersSent) {

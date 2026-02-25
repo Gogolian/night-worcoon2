@@ -1,6 +1,9 @@
 <script>
+  import { afterUpdate, onDestroy } from 'svelte';
+  import * as ace from 'ace-builds';
   import Button from '../atoms/Button.svelte';
   import HttpMethodSelector from './HttpMethodSelector.svelte';
+  import MatchRecordingUrlInput from '../atoms/MatchRecordingUrlInput.svelte';
 
   export let rule;
   export let index;
@@ -8,6 +11,75 @@
   export let onMethodChange;
   export let onUrlChange;
   export let onActionChange;
+  export let onInlineResponseChange;
+
+  // Ace editor state
+  let editorContainer;
+  let editor = null;
+  let editorInitialized = false;
+  let debounceTimer = null;
+
+  $: isInline = rule.action === 'RET_INLINE';
+
+  // When switching away from RET_INLINE, destroy editor
+  $: if (!isInline && editorInitialized) {
+    destroyEditor();
+  }
+
+  afterUpdate(() => {
+    if (isInline && editorContainer && !editorInitialized) {
+      initEditor();
+    }
+  });
+
+  function initEditor() {
+    if (editorInitialized || !editorContainer) return;
+    ace.config.set('basePath', 'https://cdn.jsdelivr.net/npm/ace-builds@1.32.2/src-noconflict/');
+    editor = ace.edit(editorContainer);
+    editor.setTheme('ace/theme/monokai');
+    editor.session.setMode('ace/mode/json');
+    editor.setFontSize(12);
+    editor.setOptions({
+      showPrintMargin: false,
+      highlightActiveLine: true,
+      wrap: true,
+      tabSize: 2,
+    });
+    const body = rule.inlineResponse?.body ?? '{}';
+    editor.setValue(body, -1);
+    editor.session.on('change', () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const updated = {
+          ...(rule.inlineResponse || {}),
+          body: editor.getValue()
+        };
+        onInlineResponseChange && onInlineResponseChange(index, updated);
+      }, 400);
+    });
+    editorInitialized = true;
+  }
+
+  function destroyEditor() {
+    if (editor) {
+      editor.destroy();
+      editor = null;
+    }
+    editorInitialized = false;
+  }
+
+  function handleStatusCodeChange(e) {
+    const updated = {
+      ...(rule.inlineResponse || {}),
+      statusCode: parseInt(e.target.value, 10) || 200
+    };
+    onInlineResponseChange && onInlineResponseChange(index, updated);
+  }
+
+  onDestroy(() => {
+    destroyEditor();
+    clearTimeout(debounceTimer);
+  });
 </script>
 
 <div class="rule-card">
@@ -45,6 +117,13 @@
           >
             PASS
           </button>
+          <button
+            class="action-button-compact action-button-mock"
+            class:active={rule.action === 'RET_INLINE'}
+            on:click={() => onActionChange(index, 'RET_INLINE')}
+          >
+            MOCK
+          </button>
         </div>
       </div>
     </div>
@@ -52,17 +131,35 @@
 
   <div class="rule-field">
     <span class="field-label">URL Pattern</span>
-    <input 
-      type="text" 
-      class="url-input"
-      placeholder="e.g., /bff/cms or cms/config or bff/:id/details"
+    <MatchRecordingUrlInput
       value={rule.url}
-      on:input={(e) => onUrlChange(index, e)}
+      onInput={(e) => onUrlChange(index, e)}
+      showFiles={false}
     />
     <span class="field-hint">
       Matches any URL containing this pattern. CAN BE PART OF THE URL. Use <code>:param</code> for wildcards (e.g., <code>/api/:id/user</code> but must be exact URL.)
     </span>
   </div>
+
+  {#if isInline}
+    <div class="rule-field inline-response-section">
+      <div class="inline-response-header">
+        <span class="field-label">Inline Response</span>
+        <div class="status-code-wrap">
+          <span class="field-label">Status</span>
+          <input
+            type="number"
+            class="status-code-input"
+            value={rule.inlineResponse?.statusCode ?? 200}
+            min="100"
+            max="599"
+            on:change={handleStatusCodeChange}
+          />
+        </div>
+      </div>
+      <div class="ace-wrap" bind:this={editorContainer}></div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -193,5 +290,63 @@
     color: #ffffff;
     border-color: #60a5fa;
     box-shadow: 0 2px 8px rgba(96, 165, 250, 0.4);
+  }
+
+  .action-button-mock {
+    border-color: #4c1d95;
+    color: #a78bfa;
+  }
+  .action-button-mock:hover {
+    border-color: #7c3aed;
+    color: #c4b5fd;
+  }
+  .action-button-mock.active {
+    background: linear-gradient(135deg, #6d28d9 0%, #7c3aed 100%);
+    color: #ffffff;
+    border-color: #7c3aed;
+    box-shadow: 0 2px 8px rgba(124, 58, 237, 0.4);
+  }
+
+  .inline-response-section {
+    border-top: 1px solid #1a2847;
+    padding-top: 10px;
+    gap: 8px;
+  }
+
+  .inline-response-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+
+  .status-code-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .status-code-input {
+    width: 72px;
+    padding: 4px 8px;
+    background-color: #1a2847;
+    border: 2px solid #374151;
+    border-radius: 4px;
+    color: #d4d4d8;
+    font-size: 13px;
+    font-family: monospace;
+    text-align: center;
+  }
+  .status-code-input:focus {
+    outline: none;
+    border-color: #60a5fa;
+  }
+
+  .ace-wrap {
+    width: 100%;
+    height: 280px;
+    border: 1px solid #1a2847;
+    border-radius: 4px;
+    overflow: hidden;
   }
 </style>

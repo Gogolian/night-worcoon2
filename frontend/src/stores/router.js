@@ -11,6 +11,13 @@ export const routes = {
     path: '/dashboard',
     isPlugin: false
   },
+  logs: {
+    id: 'logs',
+    label: 'Logs',
+    icon: '📋',
+    path: '/logs',
+    isPlugin: false
+  },
   recordings: {
     id: 'recordings',
     label: 'Recordings',

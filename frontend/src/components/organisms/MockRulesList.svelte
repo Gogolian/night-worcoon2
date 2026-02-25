@@ -8,6 +8,7 @@
   export let onUpdateMethod;
   export let onUpdateUrl;
   export let onUpdateAction;
+  export let onUpdateInlineResponse;
 </script>
 
 <div class="rules-container">
@@ -19,6 +20,7 @@
       onMethodChange={onUpdateMethod}
       onUrlChange={onUpdateUrl}
       onActionChange={onUpdateAction}
+      onInlineResponseChange={onUpdateInlineResponse}
     />
   {/each}
 

@@ -41,6 +41,37 @@ function getAllFiles(dir, baseDir = dir, fileList = []) {
 }
 
 /**
+ * Get immediate children (dirs + files) of a directory
+ * @param {string} dirPath - Absolute directory path
+ * @returns {{ dirs: string[], files: string[] }}
+ */
+function getChildren(dirPath) {
+  if (!existsSync(dirPath)) {
+    return { dirs: [], files: [] };
+  }
+
+  const stat = statSync(dirPath);
+  if (!stat.isDirectory()) {
+    return { dirs: [], files: [] };
+  }
+
+  const items = readdirSync(dirPath);
+  const dirs = [];
+  const files = [];
+
+  items.forEach(item => {
+    const fullPath = join(dirPath, item);
+    if (statSync(fullPath).isDirectory()) {
+      dirs.push(item);
+    } else {
+      files.push(item);
+    }
+  });
+
+  return { dirs, files };
+}
+
+/**
  * Setup recordings API routes
  * @returns {Router} Express router
  */
@@ -85,6 +116,31 @@ export function setupRecordingsRoutes() {
     } catch (err) {
       console.error('Error listing files:', err);
       res.status(500).json({ error: 'Failed to list files' });
+    }
+  });
+
+  // Get immediate children (dirs + files) at the root of a recordings folder
+  router.get('/dirs/:folder', (req, res) => {
+    try {
+      const { folder } = req.params;
+      const folderPath = join(RECORDINGS_DIR, folder);
+      res.json(getChildren(folderPath));
+    } catch (err) {
+      console.error('Error listing dirs:', err);
+      res.status(500).json({ error: 'Failed to list directory' });
+    }
+  });
+
+  // Get immediate children (dirs + files) at a subpath within a recordings folder
+  router.get('/dirs/:folder/*', (req, res) => {
+    try {
+      const { folder } = req.params;
+      const subPath = req.params[0];
+      const fullPath = join(RECORDINGS_DIR, folder, subPath);
+      res.json(getChildren(fullPath));
+    } catch (err) {
+      console.error('Error listing dirs:', err);
+      res.status(500).json({ error: 'Failed to list directory' });
     }
   });
 
