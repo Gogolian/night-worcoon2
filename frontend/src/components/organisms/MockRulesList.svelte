@@ -12,7 +12,7 @@
 </script>
 
 <div class="rules-container">
-  {#each rules as rule, index}
+  {#each rules as rule, index (rule)}
     <RuleCard
       {rule}
       {index}

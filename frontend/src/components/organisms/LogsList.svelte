@@ -81,7 +81,7 @@
           <span class="col-rule dim" title={entry.appInfo.ruleMatched || ''}>{entry.appInfo.ruleMatched || '—'}</span>
           <span class="col-lat dim">{formatLatency(entry.latency)}</span>
           <span class="col-mock">
-            <button class="mock-btn" on:click={(e) => handleMock(e, entry)} title="Create mock rule from this entry">Mock</button>
+            <button class="mock-btn" on:click={(e) => handleMock(e, entry)} title="Create mock rule from this entry"><span class="material-symbols-outlined">add_circle</span>Mock</button>
           </span>
         </div>
       {/each}
@@ -108,7 +108,7 @@
 
   .row {
     display: grid;
-    grid-template-columns: 90px 72px 1fr 64px 60px 140px 66px 52px;
+    grid-template-columns: 90px 72px minmax(0, 600px) 64px 60px 140px 70px 68px;
     align-items: center;
     gap: 6px;
     padding: 0 10px;
@@ -132,7 +132,6 @@
   .entries-scroll {
     max-height: 560px;
     overflow-y: auto;
-    transition: max-height 0.2s ease;
   }
   .entries-scroll.has-selection {
     max-height: 240px;
@@ -143,7 +142,6 @@
     padding-top: 5px;
     padding-bottom: 5px;
     cursor: pointer;
-    transition: background 0.1s;
     font-size: 12px;
   }
   .entry-row:hover { background: #131c3a; }
@@ -193,7 +191,7 @@
   :global(.status-5xx)     { background: #2a0c0c; color: #f87171; }
   :global(.status-unknown) { background: #1a1a1a; color: #6b7280; }
 
-  /* Action badges */
+  /* Action badges — purely informational, flat style */
   .action-badge {
     font-size: 10px;
     font-weight: 600;
@@ -202,7 +200,7 @@
     letter-spacing: 0.05em;
   }
   .action-badge.mock  { background: #0c2a1a; color: #4ade80; border: 1px solid #14532d; }
-  .action-badge.proxy { background: #1a1a3a; color: #818cf8; border: 1px solid #3730a3; }
+  .action-badge.proxy { background: #111827; color: #6b7280; border: 1px solid #1f2937; }
 
   .col-rule {
     white-space: nowrap;
@@ -212,22 +210,38 @@
   }
   .col-lat { text-align: right; font-family: monospace; font-size: 11px; }
 
+  .col-mock { padding-left: 10px; border-left: 1px solid #1a2847; display: flex; align-items: center; }
+
+  /* Mock button — clearly interactive */
+  .mock-btn .material-symbols-outlined {
+    font-size: 13px;
+    line-height: 1;
+    vertical-align: middle;
+    margin-right: 3px;
+    font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20;
+  }
   .mock-btn {
-    background: #1a1a3a;
-    border: 1px solid #4c1d95;
-    color: #a78bfa;
-    padding: 2px 7px;
-    border-radius: 3px;
+    background: linear-gradient(135deg, #2e1065 0%, #1e1060 100%);
+    border: 1px solid #7c3aed;
+    color: #c4b5fd;
+    padding: 2px 8px;
+    border-radius: 4px;
     font-size: 10px;
-    font-weight: 600;
+    font-weight: 700;
     font-family: inherit;
     cursor: pointer;
-    transition: all 0.15s;
     white-space: nowrap;
+    box-shadow: 0 1px 4px rgba(124, 58, 237, 0.35);
+    letter-spacing: 0.03em;
   }
   .mock-btn:hover {
-    background: #2e1065;
-    border-color: #7c3aed;
-    color: #c4b5fd;
+    background: linear-gradient(135deg, #4c1d95 0%, #3b0d9e 100%);
+    border-color: #a78bfa;
+    color: #ede9fe;
+    box-shadow: 0 2px 8px rgba(167, 139, 250, 0.45);
+  }
+  .mock-btn:active {
+    transform: translateY(1px);
+    box-shadow: 0 0 4px rgba(124, 58, 237, 0.25);
   }
 </style>

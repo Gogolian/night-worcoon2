@@ -20,14 +20,18 @@
   let currentSetName = 'active';
 
   onMount(async () => {
+    // Capture and clear the pending entry synchronously before any awaits.
+    // This prevents a race where a stale async onMount chain from a previously
+    // destroyed component consumes the pending entry that belongs to the new instance.
+    const pending = get(pendingMockEntry);
+    if (pending) pendingMockEntry.set(null);
+
     await loadAvailableSets();
     await loadServerConfig();
     await loadActiveConfig();
 
-    // If a log entry is pending (user clicked "Mock" from Logs view), pre-fill a rule
-    const pending = get(pendingMockEntry);
+    // If a log entry was pending (user clicked "Mock" from Logs view), pre-fill a rule
     if (pending) {
-      pendingMockEntry.set(null);
       try {
         const u = new URL(pending.request.url, 'http://x');
         const pathname = u.pathname;
