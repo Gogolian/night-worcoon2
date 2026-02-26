@@ -1,4 +1,4 @@
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 
 // Core stores
 export const logEntries  = writable([]);
@@ -23,9 +23,10 @@ let pollingInterval = null;
 /**
  * Fetch log entries from the server, applying current filters.
  * @param {object} [filters]
+ * @param {boolean} [silent] - If true, skip logsLoading toggling (for background polls)
  */
-export async function fetchEntries(filters = {}) {
-  logsLoading.set(true);
+export async function fetchEntries(filters = {}, silent = false) {
+  if (!silent) logsLoading.set(true);
   try {
     const params = new URLSearchParams();
     if (filters.url)    params.set('url',    filters.url);
@@ -38,24 +39,52 @@ export async function fetchEntries(filters = {}) {
     const res = await fetch(`/__api/logs/entries?${params}`);
     if (!res.ok) throw new Error('Failed to fetch log entries');
     const data = await res.json();
-    logEntries.set(data.entries || []);
-    logTotal.set(data.total ?? 0);
+    const newEntries = data.entries || [];
+    const newTotal   = data.total ?? 0;
+
+    // Smart diff: only update stores when the data actually changed.
+    // If the total count and the first entry's id both match, the list is identical.
+    if (silent) {
+      const current = get(logEntries);
+      const unchanged =
+        newTotal === get(logTotal) &&
+        newEntries.length === current.length &&
+        (newEntries.length === 0 || newEntries[0]?.id === current[0]?.id);
+      if (!unchanged) {
+        logEntries.set(newEntries);
+        logTotal.set(newTotal);
+      }
+    } else {
+      logEntries.set(newEntries);
+      logTotal.set(newTotal);
+    }
   } catch (err) {
     console.error('Error fetching log entries:', err);
   } finally {
-    logsLoading.set(false);
+    if (!silent) logsLoading.set(false);
   }
 }
 
 /**
  * Fetch aggregate stats.
+ * Only updates the store when values have actually changed.
  */
 export async function fetchStats() {
   try {
     const res = await fetch('/__api/logs/stats');
     if (!res.ok) throw new Error('Failed to fetch log stats');
     const data = await res.json();
-    logStats.set(data);
+    // Shallow compare — skip store update if all values are identical
+    const prev = get(logStats);
+    if (
+      data.total       !== prev.total       ||
+      data.mocked      !== prev.mocked      ||
+      data.proxied     !== prev.proxied     ||
+      data.errors      !== prev.errors      ||
+      data.avgLatency  !== prev.avgLatency
+    ) {
+      logStats.set(data);
+    }
   } catch (err) {
     console.error('Error fetching log stats:', err);
   }
@@ -80,18 +109,18 @@ export async function clearLogs() {
 let _currentFilters = {};
 
 /**
- * Start polling every 2 seconds. Call stopPolling() on component destroy.
+ * Start polling every 3 seconds. Call stopPolling() on component destroy.
  * @param {object} [filters] - Initial filter values
  */
 export function startPolling(filters = {}) {
   _currentFilters = filters;
-  fetchEntries(filters);
+  fetchEntries(filters, false);
   fetchStats();
   if (pollingInterval) clearInterval(pollingInterval);
   pollingInterval = setInterval(() => {
-    fetchEntries(_currentFilters);
+    fetchEntries(_currentFilters, true);  // silent — no loading spinner churn
     fetchStats();
-  }, 2000);
+  }, 3000);
 }
 
 /** Update live filters used by the polling loop. */
