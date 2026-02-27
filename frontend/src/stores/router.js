@@ -18,6 +18,13 @@ export const routes = {
     path: '/logs',
     isPlugin: false
   },
+  post: {
+    id: 'post',
+    label: 'POST',
+    icon: '📬',
+    path: '/post',
+    isPlugin: false
+  },
   recordings: {
     id: 'recordings',
     label: 'Recordings',

@@ -6,6 +6,7 @@
   import Toast from './components/molecules/Toast.svelte';
   import Dashboard from './views/Dashboard.svelte';
   import Logs from './views/Logs.svelte';
+  import POST from './views/POST.svelte';
   import Recordings from './views/Recordings.svelte';
   import Plugins from './views/Plugins.svelte';
   import Settings from './views/Settings.svelte';
@@ -33,6 +34,7 @@
   $: sidebarItems = [
     { ...routes.dashboard,  active: routes.dashboard.id  === $currentRoute },
     { ...routes.logs,       active: routes.logs.id       === $currentRoute },
+    { ...routes.post,       active: routes.post.id       === $currentRoute },
     { ...routes.recordings, active: routes.recordings.id === $currentRoute },
     { ...routes.plugins,    active: routes.plugins.id    === $currentRoute },
     // Add all plugins under Plugins section (enabled and disabled)
@@ -62,6 +64,8 @@
         return Dashboard;
       case 'logs':
         return Logs;
+      case 'post':
+        return POST;
       case 'recordings':
         return Recordings;
       case 'plugins':

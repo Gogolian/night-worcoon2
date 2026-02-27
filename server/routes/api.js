@@ -1,4 +1,6 @@
 import express from 'express';
+import http from 'http';
+import https from 'https';
 import { saveState, getActiveConfigSet } from '../stateManager.js';
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
@@ -202,6 +204,65 @@ export function setupApiRoutes(pluginController, state) {
       activeConfigSet: id,
       message: 'Config set activated and applied (no restart needed)'
     });
+  });
+
+  // ── Request client – forward a request to the active target URL ──────────
+  router.post('/request', async (req, res) => {
+    const { method = 'GET', path: reqPath = '/', headers: userHeaders = {}, body } = req.body || {};
+    const activeSet  = getActiveConfigSet(state);
+    const targetUrl  = (activeSet.targetUrl || 'http://localhost:8078').replace(/\/$/, '');
+    const baseHdrs   = activeSet.requestHeaders || {};
+    const merged     = { ...baseHdrs, ...userHeaders };
+    const startTime  = Date.now();
+
+    try {
+      const normalPath = reqPath.startsWith('/') ? reqPath : '/' + reqPath;
+      const fullUrl    = targetUrl + normalPath;
+      const parsed     = new URL(fullUrl);
+      const isHttps    = parsed.protocol === 'https:';
+      const transport  = isHttps ? https : http;
+
+      const reqHeaders = {
+        'Content-Type': 'application/json',
+        ...merged
+      };
+      const bodyBuf = (body && !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase()))
+        ? Buffer.from(body, 'utf8')
+        : null;
+      if (bodyBuf) reqHeaders['Content-Length'] = String(bodyBuf.length);
+
+      const options = {
+        hostname: parsed.hostname,
+        port    : parsed.port || (isHttps ? 443 : 80),
+        path    : parsed.pathname + parsed.search,
+        method  : method.toUpperCase(),
+        headers : reqHeaders,
+        rejectUnauthorized: false
+      };
+
+      const result = await new Promise((resolve, reject) => {
+        const request = transport.request(options, (proxyRes) => {
+          const chunks = [];
+          proxyRes.on('data', chunk => chunks.push(chunk));
+          proxyRes.on('end', () => resolve({
+            status    : proxyRes.statusCode,
+            statusText: proxyRes.statusMessage,
+            headers   : proxyRes.headers,
+            body      : Buffer.concat(chunks).toString('utf8'),
+            latency   : Date.now() - startTime,
+            url       : fullUrl
+          }));
+          proxyRes.on('error', reject);
+        });
+        request.on('error', reject);
+        if (bodyBuf) request.write(bodyBuf);
+        request.end();
+      });
+
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err.message, latency: Date.now() - startTime });
+    }
   });
 
   // Get all plugins

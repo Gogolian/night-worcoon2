@@ -2,6 +2,7 @@
   import { createEventDispatcher } from 'svelte';
   import { statusClass, formatLatency, pendingMockEntry } from '../../stores/logs.js';
   import { currentRoute } from '../../stores/router.js';
+  import { loadFromLogEntry } from '../../stores/requester.js';
 
   const dispatch = createEventDispatcher();
 
@@ -17,6 +18,12 @@
     event.stopPropagation();
     pendingMockEntry.set(entry);
     currentRoute.set('plugin-mock');
+  }
+
+  function handleToPost(event, entry) {
+    event.stopPropagation();
+    loadFromLogEntry(entry);
+    currentRoute.set('post');
   }
 
   function fmtTime(iso) {
@@ -82,6 +89,7 @@
           <span class="col-lat dim">{formatLatency(entry.latency)}</span>
           <span class="col-mock">
             <button class="mock-btn" on:click={(e) => handleMock(e, entry)} title="Create mock rule from this entry"><span class="material-symbols-outlined">add_circle</span>Mock</button>
+            <button class="post-btn" on:click={(e) => handleToPost(e, entry)} title="Send this request in POST tab"><span class="material-symbols-outlined">send</span>POST</button>
           </span>
         </div>
       {/each}
@@ -108,7 +116,7 @@
 
   .row {
     display: grid;
-    grid-template-columns: 90px 72px minmax(0, 600px) 64px 60px 140px 70px 68px;
+    grid-template-columns: 90px 72px minmax(0, 600px) 64px 60px 140px 70px 136px;
     align-items: center;
     gap: 6px;
     padding: 0 10px;
@@ -210,7 +218,7 @@
   }
   .col-lat { text-align: right; font-family: monospace; font-size: 11px; }
 
-  .col-mock { padding-left: 10px; border-left: 1px solid #1a2847; display: flex; align-items: center; }
+  .col-mock { padding-left: 10px; border-left: 1px solid #1a2847; display: flex; align-items: center; gap: 4px; }
 
   /* Mock button — clearly interactive */
   .mock-btn .material-symbols-outlined {
@@ -243,5 +251,37 @@
   .mock-btn:active {
     transform: translateY(1px);
     box-shadow: 0 0 4px rgba(124, 58, 237, 0.25);
+  }
+
+  .post-btn .material-symbols-outlined {
+    font-size: 13px;
+    line-height: 1;
+    vertical-align: middle;
+    margin-right: 3px;
+    font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 20;
+  }
+  .post-btn {
+    background: linear-gradient(135deg, #0c2a52 0%, #0a1e3d 100%);
+    border: 1px solid #3b82f6;
+    color: #93c5fd;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+    box-shadow: 0 1px 4px rgba(59, 130, 246, 0.35);
+    letter-spacing: 0.03em;
+  }
+  .post-btn:hover {
+    background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+    border-color: #60a5fa;
+    color: #dbeafe;
+    box-shadow: 0 2px 8px rgba(96, 165, 250, 0.45);
+  }
+  .post-btn:active {
+    transform: translateY(1px);
+    box-shadow: 0 0 4px rgba(59, 130, 246, 0.25);
   }
 </style>
