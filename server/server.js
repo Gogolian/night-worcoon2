@@ -12,6 +12,7 @@ import { setupRulesRoutes } from './routes/rules.js';
 import { setupRecordingsRoutes } from './routes/recordings.js';
 import { setupWebSocketRoutes } from './routes/websocket.js';
 import { setupLogsRoutes } from './routes/logs.js';
+import { loadConfig as loadBucketConfig } from './plugins/bucket.js';
 import { loadState, saveState, getActiveConfigSet } from './stateManager.js';
 import { logManager } from './logManager.js';
 
@@ -63,7 +64,14 @@ try {
 } catch (err) {
   console.error('Failed to load active rules on startup:', err.message);
 }
-
+// Load bucket config on startup
+try {
+  const bucketConfig = loadBucketConfig();
+  pluginController.setPluginConfig('bucket', bucketConfig);
+  console.log(`\u2713 Loaded bucket config with ${(bucketConfig.collections || []).length} collection(s)`);
+} catch (err) {
+  console.error('Failed to load bucket config on startup:', err.message);
+}
 // Middleware
 app.use(cors());
 
