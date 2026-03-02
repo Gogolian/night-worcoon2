@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // ── Paths ──────────────────────────────────────────────────────────────────────
-const BUCKET_DIR = join(__dirname, '..', '..', 'bucket');
+const BUCKET_DIR = join(__dirname, '..', '..', 'recordings', 'bucket');
 const DATA_FILE = join(BUCKET_DIR, 'data.json');
 const CONFIG_FILE = join(BUCKET_DIR, 'config.json');
 
@@ -99,8 +99,10 @@ function rebuildCounters() {
   for (const [path, items] of storage.entries()) {
     let max = 0;
     for (const id of items.keys()) {
-      const num = parseInt(id, 10);
-      if (!isNaN(num) && num > max) max = num;
+        if (/^\d+$/.test(id)) {
+            const num = Number(id);
+            if (num > max) max = num;
+      }
     }
     if (max > 0) counters.set(path, max);
   }
@@ -200,14 +202,14 @@ function matchCollection(pathname, collections) {
 
     if (normalized === colPath) {
       // Exact match — collection-level request
-      return { collection: col, resourceId: null };
+      return { collection: col, normalizedColPath: colPath, resourceId: null };
     }
 
     if (normalized.startsWith(colPath + '/')) {
       // Check if there's exactly one more segment (the ID)
       const remainder = normalized.slice(colPath.length + 1);
       if (remainder && !remainder.includes('/')) {
-        return { collection: col, resourceId: remainder };
+        return { collection: col, normalizedColPath: colPath, resourceId: remainder };
       }
     }
   }
@@ -248,8 +250,11 @@ export default {
       return {};
     }
 
-    const { collection, resourceId } = match;
-    const colPath = collection.path;
+    const { collection, normalizedColPath, resourceId } = match;
+    // Always use the normalized path as the storage/counter key so that collection
+    // paths with different formatting (e.g. /api/users vs api/users/) map to the
+    // same bucket data and never lose previously persisted resources.
+    const colPath = normalizedColPath;
     const items = getCollection(colPath);
 
     // ── POST on collection: create resource ────────────────────────────────
