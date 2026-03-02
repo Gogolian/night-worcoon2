@@ -8,15 +8,15 @@
 
 ## Steps
 
-### Step 0. Save plan to file
+### Step 0. Save plan to file ✅
 
 Save this plan to `PLAN_BUCKET.md` in the project root to serve as a reference during implementation.
 
-**Wait for confirmation before proceeding to step 1.**
+**✅ Completed.**
 
 ---
 
-### Step 1. Backend: Create plugin file `server/plugins/bucket.js`
+### Step 1. Backend: Create plugin file `server/plugins/bucket.js` ✅
 
 New module exporting a default object with the plugin interface:
 
@@ -26,11 +26,11 @@ New module exporting a default object with the plugin interface:
 - **`options`**: UI schema for frontend (collections managed via dedicated API; options e.g. `persistToFile: boolean`)
 - **`handler`**: Main decision logic (see step 2)
 
-**Wait for confirmation before proceeding to step 2.**
+**✅ Completed — implemented together with steps 2 & 3 in a single file.**
 
 ---
 
-### Step 2. Backend: Handler logic in `bucket.js`
+### Step 2. Backend: Handler logic in `bucket.js` ✅
 
 Handler receives `{ req, requestBody, config, decision }`. Configuration (`config`) contains a `collections` array, each entry with:
 - `path` (string, e.g., `/api/users`)
@@ -42,33 +42,37 @@ Logic:
    - **Exact path match** (e.g., `/api/users`) → collection-level request
    - **Path + one segment** (e.g., `/api/users/abc-123`) → resource-level request by ID
 3. On match:
-   - **POST on collection** → generate ID per `idPattern`, store body in storage, return `{ action: 'mock', mock: { statusCode: 201, body: { id, ...body } } }` + `stopProcessing: true`
-   - **GET on collection** → return array of all resources under that path → `{ action: 'mock', mock: { statusCode: 200, body: [...] } }` + `stopProcessing: true`
-   - **GET on resource (ID)** → if exists in storage: return object + `stopProcessing: true`; if not: return `null` (fall through to mock/proxy)
-   - **PATCH on resource (ID)** → if exists: full override (replace entire object, keep ID), return 200 + `stopProcessing: true`; if not: return `null`
-   - **DELETE on resource (ID)** → if exists: remove, return 204 + `stopProcessing: true`; if not: return `null`
-4. If path doesn't match any collection → return `null` (don't block pipeline)
+   - **POST on collection** → generate ID per `idPattern` (with collision retry, see below), store body in storage, return `{ action: 'mock', mock: { statusCode: 201, body: { id, ...body } }, stopProcessing: true }`
+   - **GET on collection** → return array of all resources under that path → `{ action: 'mock', mock: { statusCode: 200, body: [...] }, stopProcessing: true }`
+   - **GET on resource (ID)** → if exists in storage: return object + `stopProcessing: true`; if not: return non-blocking result `{ metadata: { bucketMatched: true, bucketAction: 'miss' } }` (no `action`, no `stopProcessing` → falls through to mock/proxy while preserving observability)
+   - **PATCH on resource (ID)** → if exists: full override (replace entire object, keep ID), return 200 + `stopProcessing: true`; if not: return non-blocking miss metadata (same as GET miss)
+   - **DELETE on resource (ID)** → if exists: remove, return 204 + `stopProcessing: true`; if not: return non-blocking miss metadata
+4. If path doesn't match any collection → return `{}` (empty result, don't block pipeline)
 
 ID generator — helper within the same file:
-- `uuid` → `crypto.randomUUID()`
-- `numeric` → auto-increment per collection
-- `alphanumeric` → random 8-character string `[a-zA-Z0-9]`
-- Custom regexp → generate matching string (using `randexp` library or simpler algorithm)
+- `uuid` → `crypto.randomUUID()` — collision retry (up to 5 attempts)
+- `numeric` → auto-increment per collection — counter derived from `Math.max(...existingIds)` on load from persisted data, so restarts don't reuse IDs
+- `alphanumeric` → random 8-character string `[a-zA-Z0-9]` — collision retry (up to 10 attempts)
+- Custom regexp → generate matching string (using `randexp` library or simpler algorithm) — collision retry
+
+All generators must check for uniqueness within the collection before returning. If max retries exceeded, return 500 error.
 
 Returned `metadata`: `{ bucketMatched: true, bucketAction: 'created|retrieved|updated|deleted|listed|miss' }`
 
-**Wait for confirmation before proceeding to step 3.**
+**✅ Completed — implemented in `server/plugins/bucket.js`.**
 
 ---
 
-### Step 3. Backend: JSON file persistence
+### Step 3. Backend: JSON file persistence ✅
 
 - Data stored in memory as `Map<collectionPath, Map<id, object>>`
-- On every mutation (POST/PATCH/DELETE), data serialized to `bucket/data.json` (directory `bucket/` in project root, alongside `recordings/` and `rules/`)
+- On every mutation (POST/PATCH/DELETE), data persisted to `bucket/data.json` (directory `bucket/` in project root, alongside `recordings/` and `rules/`) using **atomic writes** (write to temp file + `rename()`) to prevent corruption from partial writes
+- **Debounced write queue**: mutations queue a save; writes are coalesced with a 100ms debounce so rapid successive requests don't block the event loop. A `flush()` method is available for graceful shutdown.
 - On server startup, data loaded from file (if it exists) — in `server.js` next to mock rules loading (~line 58-66), add analogous section loading bucket config and data via `pluginController.setPluginConfig('bucket', bucketConfig)`
-- Collection configuration (paths + ID patterns) stored in `bucket/config.json`
+- Collection configuration (paths + ID patterns) stored in `bucket/config.json` (also with atomic writes)
+- Numeric auto-increment counters are reconstructed from persisted data on load (`Math.max` of existing numeric IDs per collection)
 
-**Wait for confirmation before proceeding to step 4.**
+**✅ Completed — implemented in `server/plugins/bucket.js`.**
 
 ---
 
@@ -80,12 +84,14 @@ New Express router mounted in `server.js` as `app.use('/__api/bucket', setupBuck
 - **`POST /__api/bucket/collections`** → add new collection `{ path, idPattern }`
 - **`PATCH /__api/bucket/collections/:index`** → update collection
 - **`DELETE /__api/bucket/collections/:index`** → remove collection
-- **`GET /__api/bucket/data`** → view all data in the bucket
-- **`GET /__api/bucket/data/:collectionPath`** → view data for a specific collection
+- **`GET /__api/bucket/data`** → view all data in the bucket (all collections)
+- **`GET /__api/bucket/data/:collectionIndex`** → view data for a specific collection (by index, not path — avoids slash-encoding issues with multi-segment paths like `/api/users`)
 - **`DELETE /__api/bucket/data`** → clear entire bucket
-- **`DELETE /__api/bucket/data/:collectionPath`** → clear specific collection
-- **`PUT /__api/bucket/data/:collectionPath/:id`** → manually edit a resource from UI
-- **`DELETE /__api/bucket/data/:collectionPath/:id`** → manually delete a resource from UI
+- **`DELETE /__api/bucket/data/:collectionIndex`** → clear specific collection by index
+- **`PUT /__api/bucket/data/:collectionIndex/:id`** → manually edit a resource from UI
+- **`DELETE /__api/bucket/data/:collectionIndex/:id`** → manually delete a resource from UI
+
+**Note:** Collections are addressed by index (position in the collections array) in all API routes, avoiding the problem of multi-segment paths (e.g., `/api/users`) not matching Express `:param` segments.
 
 Every collection mutation saves changes to `bucket/config.json` and updates plugin config via `pluginController.setPluginConfig('bucket', ...)`.
 
@@ -172,7 +178,9 @@ Use existing atoms: `Button`, `Input`, `Label`, `Badge`, `DeleteButton` and mole
 
 - **Plugin order:** `bucket` before `mock` — bucket takes priority, falls through when ID doesn't exist
 - **Methods:** POST, GET, PATCH, DELETE (no PUT — PATCH acts as full override)
-- **ID generator:** Presets (UUID, numeric, alphanumeric) + custom regexp per collection
-- **Persistence:** Always active (`bucket/data.json`)
+- **ID generator:** Presets (UUID, numeric, alphanumeric) + custom regexp per collection; collision retry on all random generators; numeric counter derived from persisted data on restart
+- **Persistence:** Always active (`bucket/data.json`) with atomic writes (temp + rename) and debounced write queue (100ms coalescing)
+- **Bucket miss handling:** Returns non-blocking metadata `{ bucketMatched: true, bucketAction: 'miss' }` without `action`/`stopProcessing`, so downstream plugins run while observability is preserved
+- **Collection addressing in API:** By index (not path) to avoid multi-segment URL encoding issues
 - **Auto-save:** Every UI mutation immediately saves
 - **Checkpoint after each step:** Wait for user confirmation before continuing
