@@ -50,12 +50,12 @@ Logic:
 4. If path doesn't match any collection → return `{}` (empty result, don't block pipeline)
 
 ID generator — helper within the same file:
-- `uuid` → `crypto.randomUUID()` — collision retry (up to 5 attempts)
+- `uuid` → `crypto.randomUUID()` — collision retry (up to 10 attempts)
 - `numeric` → auto-increment per collection — counter derived from `Math.max(...existingIds)` on load from persisted data, so restarts don't reuse IDs
 - `alphanumeric` → random 8-character string `[a-zA-Z0-9]` — collision retry (up to 10 attempts)
-- Custom regexp → generate matching string (using `randexp` library or simpler algorithm) — collision retry
+- Custom regexp → generate random 12-char alphanumeric candidates and validate against the pattern; retry up to 10 times. **If no candidate matches the pattern within 10 attempts, return a 500 error — no non-matching fallback is emitted.** This means custom patterns must be satisfiable by alphanumeric characters.
 
-All generators must check for uniqueness within the collection before returning. If max retries exceeded, return 500 error.
+All generators check for uniqueness within the collection. If max retries exceeded, return 500 error.
 
 Returned `metadata`: `{ bucketMatched: true, bucketAction: 'created|retrieved|updated|deleted|listed|miss' }`
 

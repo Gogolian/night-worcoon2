@@ -156,21 +156,18 @@ function generateId(pattern, collectionPath, existingItems) {
     return { id: null, error: 'Alphanumeric collision limit reached' };
   }
 
-  // Custom regexp pattern — generate a random string and validate against it
-  // For simple patterns we use a basic generator; for complex ones, fall back to alphanumeric
+  // Custom regexp pattern — generate alphanumeric candidates and validate against the pattern.
+  // If no candidate satisfies the pattern within MAX_RETRIES, return an error (never emit a
+  // non-matching ID as that would break the idPattern contract).
   try {
     const regex = new RegExp(`^${pattern}$`);
     for (let i = 0; i < MAX_RETRIES; i++) {
-      // Try generating candidates of varying lengths
       const candidate = generateAlphanumeric(12);
       if (regex.test(candidate) && !existingItems.has(candidate)) {
         return { id: candidate, error: null };
       }
     }
-    // Fallback: use UUID and hope it matches (or just use it anyway for custom)
-    const fallback = randomUUID();
-    if (!existingItems.has(fallback)) return { id: fallback, error: null };
-    return { id: null, error: `Could not generate ID matching pattern: ${pattern}` };
+    return { id: null, error: `Could not generate ID matching pattern /${pattern}/ after ${MAX_RETRIES} attempts. Use a pattern compatible with alphanumeric characters.` };
   } catch (err) {
     return { id: null, error: `Invalid ID pattern regexp: ${err.message}` };
   }
@@ -191,11 +188,15 @@ function getCollection(path) {
  * @returns {{ collection: object, resourceId: string|null } | null}
  */
 function matchCollection(pathname, collections) {
-  // Normalize: ensure leading slash, remove trailing slash
-  const normalized = (pathname.startsWith('/') ? pathname : '/' + pathname).replace(/\/+$/, '');
+  // Normalize: ensure leading slash, remove trailing slash.
+  // Special case: '/' must stay '/' after normalization (otherwise it becomes '' and
+  // would incorrectly match every path as a resource request).
+  const raw = pathname.startsWith('/') ? pathname : '/' + pathname;
+  const normalized = raw.length > 1 ? raw.replace(/\/+$/, '') : raw;
 
   for (const col of collections) {
-    const colPath = (col.path.startsWith('/') ? col.path : '/' + col.path).replace(/\/+$/, '');
+    const rawCol = col.path.startsWith('/') ? col.path : '/' + col.path;
+    const colPath = rawCol.length > 1 ? rawCol.replace(/\/+$/, '') : rawCol;
 
     if (normalized === colPath) {
       // Exact match — collection-level request
@@ -285,7 +286,8 @@ export default {
         };
       }
 
-      const resource = { id, ...body };
+      // Apply body first, then set id so the generated id always wins over any client-supplied id
+      const resource = { ...body, id };
       items.set(id, resource);
       scheduleSave();
 
@@ -360,7 +362,9 @@ export default {
           };
         }
 
-        const resource = { id: resourceId, ...body };
+        // Apply body first, then set id so the URL resourceId is always authoritative
+        // and cannot be overridden by a client-supplied id in the request body
+        const resource = { ...body, id: resourceId };
         items.set(resourceId, resource);
         scheduleSave();
 
