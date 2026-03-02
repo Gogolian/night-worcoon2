@@ -7,7 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // ── Paths ──────────────────────────────────────────────────────────────────────
-const BUCKET_DIR = join(__dirname, '..', '..', 'recordings', 'bucket');
+const BUCKET_DIR = join(__dirname, '..', '..', 'bucket');
 const DATA_FILE = join(BUCKET_DIR, 'data.json');
 const CONFIG_FILE = join(BUCKET_DIR, 'config.json');
 
