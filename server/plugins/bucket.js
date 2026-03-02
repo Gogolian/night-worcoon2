@@ -193,12 +193,10 @@ function matchCollection(pathname, collections) {
   // Normalize: ensure leading slash, remove trailing slash.
   // Special case: '/' must stay '/' after normalization (otherwise it becomes '' and
   // would incorrectly match every path as a resource request).
-  const raw = pathname.startsWith('/') ? pathname : '/' + pathname;
-  const normalized = raw.length > 1 ? raw.replace(/\/+$/, '') : raw;
+  const normalized = normalizePath(pathname);
 
   for (const col of collections) {
-    const rawCol = col.path.startsWith('/') ? col.path : '/' + col.path;
-    const colPath = rawCol.length > 1 ? rawCol.replace(/\/+$/, '') : rawCol;
+    const colPath = normalizePath(col.path);
 
     if (normalized === colPath) {
       // Exact match — collection-level request
@@ -214,6 +212,16 @@ function matchCollection(pathname, collections) {
     }
   }
   return null;
+}
+
+// ── Path normalization (shared with routes) ────────────────────────────────────
+/**
+ * Normalize a collection path: ensure leading slash, remove trailing slash.
+ * '/' is preserved as-is to support a potential root collection.
+ */
+export function normalizePath(p) {
+  const raw = p.startsWith('/') ? p : '/' + p;
+  return raw.length > 1 ? raw.replace(/\/+$/, '') : raw;
 }
 
 // ── Exported helpers for API routes ────────────────────────────────────────────

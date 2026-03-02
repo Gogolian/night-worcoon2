@@ -12,6 +12,7 @@ import { setupRulesRoutes } from './routes/rules.js';
 import { setupRecordingsRoutes } from './routes/recordings.js';
 import { setupWebSocketRoutes } from './routes/websocket.js';
 import { setupLogsRoutes } from './routes/logs.js';
+import { setupBucketRoutes } from './routes/bucket.js';
 import { loadConfig as loadBucketConfig } from './plugins/bucket.js';
 import { loadState, saveState, getActiveConfigSet } from './stateManager.js';
 import { logManager } from './logManager.js';
@@ -114,6 +115,7 @@ app.use('/__api/rules', setupRulesRoutes(pluginController, state));
 app.use('/__api/recordings', setupRecordingsRoutes());
 app.use('/__api/websocket', setupWebSocketRoutes(wsConnections, wsMessageLog, state));
 app.use('/__api/logs', setupLogsRoutes(logManager));
+app.use('/__api/bucket', setupBucketRoutes(pluginController));
 
 // Proxy error handling
 proxy.on('error', (err, req, res) => {
