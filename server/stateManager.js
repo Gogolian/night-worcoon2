@@ -10,7 +10,7 @@ const STATE_FILE = join(__dirname, '..', 'state.json');
 const DEFAULT_STATE = {
   proxyPort: 8079,
   plugins: {},
-  pluginOrder: ['logger', 'cors', 'mock', 'recorder'],
+  pluginOrder: ['logger', 'cors', 'bucket', 'mock', 'recorder'],
   debugLogs: false,
   configSets: [
     {
@@ -63,6 +63,19 @@ export function loadState() {
         console.log('✓ Plugin configs migrated');
       }
       
+      // Migration: Insert 'bucket' before 'mock' in pluginOrder if missing
+      if (state.pluginOrder && Array.isArray(state.pluginOrder) && !state.pluginOrder.includes('bucket')) {
+        console.log('⚠️  Migrating pluginOrder: inserting bucket before mock...');
+        const mockIdx = state.pluginOrder.indexOf('mock');
+        if (mockIdx !== -1) {
+          state.pluginOrder.splice(mockIdx, 0, 'bucket');
+        } else {
+          state.pluginOrder.push('bucket');
+        }
+        saveState(state);
+        console.log('✓ pluginOrder migrated:', state.pluginOrder.join(' → '));
+      }
+
       // Ensure configSets exists and has at least one entry
       if (!state.configSets || state.configSets.length === 0) {
         console.log('⚠️  No config sets found, creating default...');
