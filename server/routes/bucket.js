@@ -108,6 +108,9 @@ export function setupBucketRoutes(pluginController) {
 
       let updatedPath = collection.path;
       if (newPath !== undefined) {
+        if (typeof newPath !== 'string') {
+          return res.status(400).json({ error: 'Path must be a string' });
+        }
         const normalizedNew = normalizePath(newPath.trim());
         // Reject duplicate (excluding self)
         const duplicate = collections.some((c, i) => i !== index && normalizePath(c.path) === normalizedNew);
@@ -117,13 +120,22 @@ export function setupBucketRoutes(pluginController) {
         updatedPath = normalizedNew;
       }
 
+      // Migrate storage if path changed
+      const oldKey = normalizePath(collection.path);
+      const newKey = normalizePath(updatedPath);
+      if (oldKey !== newKey && storage.has(oldKey)) {
+        storage.set(newKey, storage.get(oldKey));
+        storage.delete(oldKey);
+        scheduleSave();
+      }
+
       const updated = [...collections];
       updated[index] = {
         path: updatedPath,
         idPattern: newIdPattern !== undefined ? newIdPattern : collection.idPattern
       };
       updateConfig(updated);
-      console.log(`🪣 Bucket: Updated collection[${index}]`);
+      console.log(`🪣 Bucket: Updated collection[${index}]${oldKey !== newKey ? ` (renamed "${oldKey}" → "${newKey}")` : ''}`);
       res.json({ success: true, collection: updated[index] });
     } catch (err) {
       console.error('Bucket: Error updating collection:', err.message);
@@ -133,7 +145,7 @@ export function setupBucketRoutes(pluginController) {
 
   /**
    * DELETE /__api/bucket/collections/:index
-   * Removes a collection and optionally its stored data.
+   * Removes a collection and its stored data.
    */
   router.delete('/collections/:index', (req, res) => {
     try {
