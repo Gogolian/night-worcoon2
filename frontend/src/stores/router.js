@@ -53,7 +53,8 @@ const pluginIcons = {
   logger: '📝',
   cors: '🌐',
   mock: '🎭',
-  recorder: '📼'
+  recorder: '📼',
+  bucket: '🪣'
 };
 
 // Dynamically create plugin routes from all plugins (enabled and disabled)

@@ -115,7 +115,7 @@ Two changes:
 
 ---
 
-### Step 6. Frontend: Plugin view — `frontend/src/views/plugins/BucketPlugin.svelte`
+### Step 6. Frontend: Plugin view — `frontend/src/views/plugins/BucketPlugin.svelte` ✅
 
 Structure:
 - **`PluginHeader`** — toggle enable/disable
@@ -133,11 +133,11 @@ Structure:
 
 Server communication: direct `fetch()` calls to `/__api/bucket/*`. Auto-save on every collection change (same pattern as MockPlugin). Bucket data refreshed after actions.
 
-**Wait for confirmation before proceeding to step 7.**
+**✅ Completed.**
 
 ---
 
-### Step 7. Frontend: Supporting components (if extraction needed)
+### Step 7. Frontend: Supporting components (if extraction needed) ✅
 
 If logic in `BucketPlugin.svelte` grows too large, extract:
 - `frontend/src/components/organisms/BucketCollectionList.svelte` — collection list
@@ -146,16 +146,16 @@ If logic in `BucketPlugin.svelte` grows too large, extract:
 
 Use existing atoms: `Button`, `Input`, `Label`, `Badge`, `DeleteButton` and molecules: `Card`, `PluginSection`.
 
-**Wait for confirmation before proceeding to step 8.**
+**✅ No extraction needed — BucketPlugin.svelte fits comfortably in a single file.**
 
 ---
 
-### Step 8. Frontend: Register in App.svelte + icon
+### Step 8. Frontend: Register in App.svelte + icon ✅
 
 1. In `App.svelte` — import `BucketPlugin` and add to `pluginComponents` map: `bucket: BucketPlugin`
 2. In `router.js` in `pluginIcons` map: `bucket: '🪣'`
 
-**Wait for confirmation before proceeding to verification.**
+**✅ Completed.**
 
 ---
 
