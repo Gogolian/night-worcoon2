@@ -99,7 +99,7 @@ Every collection mutation saves changes to `bucket/config.json` and updates plug
 
 ---
 
-### Step 5. Backend: Update plugin order + mount routes
+### Step 5. Backend: Update plugin order + mount routes ✅
 
 Two changes:
 
@@ -111,7 +111,7 @@ Two changes:
    `app.use('/__api/bucket', setupBucketRoutes(pluginController))`
    Also add a bucket loading section at startup (analogous to mock rules).
 
-**Wait for confirmation before proceeding to step 6.**
+**✅ Completed.**
 
 ---
 
