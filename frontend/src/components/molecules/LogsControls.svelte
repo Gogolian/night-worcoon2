@@ -58,6 +58,11 @@
         on:click={() => { actionFilter.set('mock'); onFilterChange(); }}
       >Mock</button>
       <button
+        class="toggle-btn bucket-btn"
+        class:active={$actionFilter === 'bucket'}
+        on:click={() => { actionFilter.set('bucket'); onFilterChange(); }}
+      >Bucket</button>
+      <button
         class="toggle-btn proxy-btn"
         class:active={$actionFilter === 'proxy'}
         on:click={() => { actionFilter.set('proxy'); onFilterChange(); }}
@@ -68,7 +73,8 @@
   <div class="right-controls">
     <div class="stats-strip">
       <span class="stat" title="Total entries in buffer">{$logStats.total} total</span>
-      <span class="stat mock" title="Mocked requests">{$logStats.mocked} mock</span>
+      <span class="stat mock" title="Pure mock responses">{$logStats.mocked} mock</span>
+      <span class="stat bucket" title="Bucket responses">{$logStats.bucketed} bucket</span>
       <span class="stat proxy" title="Proxied requests">{$logStats.proxied} proxy</span>
       <span class="stat error" title="5xx responses">{$logStats.errors} err</span>
       <span class="stat latency" title="Average latency">{$logStats.avgLatency}ms avg</span>
@@ -142,8 +148,9 @@
   .toggle-btn + .toggle-btn { border-left: 1px solid #1a2847; }
   .toggle-btn:hover { background: #1a2847; color: #d4d4d8; }
   .toggle-btn.active { background: #1e3a8a; color: #60a5fa; }
-  .toggle-btn.mock-btn.active { background: #1a3a1a; color: #4ade80; }
-  .toggle-btn.proxy-btn.active { background: #1a1a3a; color: #818cf8; }
+  .toggle-btn.mock-btn.active  { background: #1a3a1a; color: #4ade80; }
+  .toggle-btn.bucket-btn.active { background: #0c1a2a; color: #60a5fa; }
+  .toggle-btn.proxy-btn.active  { background: #1a1a3a; color: #818cf8; }
 
   .right-controls {
     display: flex;
@@ -159,6 +166,7 @@
   }
   .stat { color: #6b7280; }
   .stat.mock   { color: #4ade80; }
+  .stat.bucket { color: #60a5fa; }
   .stat.proxy  { color: #818cf8; }
   .stat.error  { color: #f87171; }
   .stat.latency { color: #fbbf24; }

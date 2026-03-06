@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { applyTemplate, generateFromPattern } from '../templateResolver.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -125,12 +126,13 @@ function generateAlphanumeric(length = 8) {
 
 /**
  * Generate a unique ID for a collection.
- * @param {string} pattern - 'uuid' | 'numeric' | 'alphanumeric' | custom regexp string
+ * @param {string} pattern   - 'uuid' | 'numeric' | 'alphanumeric' | custom regexp string
  * @param {string} collectionPath - collection path (for numeric counter tracking)
- * @param {Map} existingItems - existing items map to check uniqueness
+ * @param {Map}    existingItems  - existing items map to check uniqueness
+ * @param {number} [idLength]     - optional: zero-pad width (numeric) or string length (alphanumeric)
  * @returns {{ id: string|null, error: string|null }}
  */
-function generateId(pattern, collectionPath, existingItems) {
+function generateId(pattern, collectionPath, existingItems, idLength) {
   const MAX_RETRIES = 10;
 
   if (pattern === 'uuid') {
@@ -145,31 +147,33 @@ function generateId(pattern, collectionPath, existingItems) {
     const current = counters.get(collectionPath) || 0;
     const next = current + 1;
     counters.set(collectionPath, next);
-    const id = String(next);
-    // Numeric is guaranteed unique via monotonic counter
+    // Zero-pad if idLength specified
+    const id = idLength && idLength > 0
+      ? String(next).padStart(idLength, '0')
+      : String(next);
     return { id, error: null };
   }
 
   if (pattern === 'alphanumeric') {
+    const len = (idLength && idLength > 0) ? idLength : 8;
     for (let i = 0; i < MAX_RETRIES; i++) {
-      const id = generateAlphanumeric(8);
+      const id = generateAlphanumeric(len);
       if (!existingItems.has(id)) return { id, error: null };
     }
     return { id: null, error: 'Alphanumeric collision limit reached' };
   }
 
-  // Custom regexp pattern — generate alphanumeric candidates and validate against the pattern.
-  // If no candidate satisfies the pattern within MAX_RETRIES, return an error (never emit a
-  // non-matching ID as that would break the idPattern contract).
+  // Custom regexp pattern — generate from the pattern structure directly, then
+  // verify the result still matches (guards against edge cases in the generator).
   try {
-    const regex = new RegExp(`^${pattern}$`);
+    const regex = new RegExp(`^(?:${pattern})$`);
     for (let i = 0; i < MAX_RETRIES; i++) {
-      const candidate = generateAlphanumeric(12);
-      if (regex.test(candidate) && !existingItems.has(candidate)) {
+      const candidate = generateFromPattern(pattern);
+      if (candidate && regex.test(candidate) && !existingItems.has(candidate)) {
         return { id: candidate, error: null };
       }
     }
-    return { id: null, error: `Could not generate ID matching pattern /${pattern}/ after ${MAX_RETRIES} attempts. Use a pattern compatible with alphanumeric characters.` };
+    return { id: null, error: `Could not generate ID matching pattern /${pattern}/ after ${MAX_RETRIES} attempts.` };
   } catch (err) {
     return { id: null, error: `Invalid ID pattern regexp: ${err.message}` };
   }
@@ -285,7 +289,7 @@ export default {
         };
       }
 
-      const { id, error } = generateId(collection.idPattern || 'uuid', colPath, items);
+      const { id, error } = generateId(collection.idPattern || 'uuid', colPath, items, collection.idLength);
       if (error) {
         return {
           action: 'mock',
@@ -299,8 +303,21 @@ export default {
         };
       }
 
-      // Apply body first, then set id so the generated id always wins over any client-supplied id
-      const resource = { ...body, id };
+      // Build resource — apply template first (if defined), then merge in extra
+      // request body fields that are NOT already covered by the template, then
+      // force the generated id to always be authoritative.
+      let resource;
+      if (collection.responseTemplate && typeof collection.responseTemplate === 'object') {
+        const resolved = applyTemplate(collection.responseTemplate, { id, req, body });
+        // Merge request body fields that are absent from the resolved template
+        const extra = {};
+        for (const [k, v] of Object.entries(body)) {
+          if (!(k in resolved)) extra[k] = v;
+        }
+        resource = { ...resolved, ...extra, id };
+      } else {
+        resource = { ...body, id };
+      }
       items.set(id, resource);
       scheduleSave();
 

@@ -69,7 +69,7 @@ export function setupBucketRoutes(pluginController) {
    */
   router.post('/collections', (req, res) => {
     try {
-      const { path, idPattern = 'uuid' } = req.body || {};
+      const { path, idPattern = 'uuid', idLength, responseTemplate } = req.body || {};
       if (!path || typeof path !== 'string' || !path.trim()) {
         return res.status(400).json({ error: '"path" is required and must be a non-empty string' });
       }
@@ -83,9 +83,16 @@ export function setupBucketRoutes(pluginController) {
       }
 
       const newCollection = { path: normalizedPath, idPattern };
+      if (idLength != null && Number(idLength) > 0) newCollection.idLength = Number(idLength);
+      if (responseTemplate != null) {
+        if (typeof responseTemplate !== 'object' || Array.isArray(responseTemplate)) {
+          return res.status(400).json({ error: 'responseTemplate must be a JSON object' });
+        }
+        newCollection.responseTemplate = responseTemplate;
+      }
       const updated = [...collections, newCollection];
       updateConfig(updated);
-      console.log(`🪣 Bucket: Added collection "${normalizedPath}" (idPattern: ${idPattern})`);
+      console.log(`🪣 Bucket: Added collection "${normalizedPath}" (idPattern: ${idPattern}${newCollection.idLength ? `, idLength: ${newCollection.idLength}` : ''})`);
       res.status(201).json({ success: true, collection: newCollection, index: updated.length - 1 });
     } catch (err) {
       console.error('Bucket: Error adding collection:', err.message);
@@ -104,7 +111,7 @@ export function setupBucketRoutes(pluginController) {
       if (resolved.error) return res.status(resolved.status).json({ error: resolved.error });
 
       const { collection, index, collections } = resolved;
-      const { path: newPath, idPattern: newIdPattern } = req.body || {};
+      const { path: newPath, idPattern: newIdPattern, idLength: newIdLength, responseTemplate: newResponseTemplate } = req.body || {};
 
       let updatedPath = collection.path;
       if (newPath !== undefined) {
@@ -134,6 +141,27 @@ export function setupBucketRoutes(pluginController) {
         path: updatedPath,
         idPattern: newIdPattern !== undefined ? newIdPattern : collection.idPattern
       };
+      // Carry over or update idLength — send null/0 to clear it
+      if (newIdLength !== undefined) {
+        if (newIdLength !== null && Number(newIdLength) > 0) {
+          updated[index].idLength = Number(newIdLength);
+        }
+        // else: don't set — effectively clears any existing idLength
+      } else if (collection.idLength !== undefined) {
+        updated[index].idLength = collection.idLength;
+      }
+      // Carry over or update responseTemplate — send null to clear it
+      if ('responseTemplate' in (req.body || {})) {
+        if (newResponseTemplate !== null && newResponseTemplate !== undefined) {
+          if (typeof newResponseTemplate === 'object' && !Array.isArray(newResponseTemplate)) {
+            updated[index].responseTemplate = newResponseTemplate;
+          }
+          // else ignore invalid value
+        }
+        // null/undefined in body = clear the template (don't set it)
+      } else if (collection.responseTemplate !== undefined) {
+        updated[index].responseTemplate = collection.responseTemplate;
+      }
       updateConfig(updated);
       console.log(`🪣 Bucket: Updated collection[${index}]${oldKey !== newKey ? ` (renamed "${oldKey}" → "${newKey}")` : ''}`);
       res.json({ success: true, collection: updated[index] });

@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { applyTemplate } from '../templateResolver.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -160,6 +161,19 @@ function executeAction(action, fallbackFallback, req, requestBody, recordingsFol
     const inline = rule && rule.inlineResponse;
     if (inline) {
       console.log(`🎭 Mock: Returning inline response for ${req.method} ${req.url}`);
+
+      // Resolve {{ token }} placeholders in inline body
+      let resolvedBody = inline.body || '{}';
+      try {
+        const bodyObj = JSON.parse(resolvedBody);
+        let parsedReqBody = null;
+        try { parsedReqBody = requestBody ? JSON.parse(requestBody.toString()) : null; } catch (_) {}
+        const resolved = applyTemplate(bodyObj, { id: null, req, body: parsedReqBody });
+        resolvedBody = JSON.stringify(resolved);
+      } catch (_) {
+        // Body is not valid JSON — return as-is (no template resolution on non-JSON)
+      }
+
       return {
         action: 'mock',
         mock: {
@@ -170,7 +184,7 @@ function executeAction(action, fallbackFallback, req, requestBody, recordingsFol
             'AAmocked': ' ~~~~~ SUCCESSFULLY MOCKED BY NWC2 ~~~~~ ',
             ...(inline.headers || {})
           },
-          body: inline.body || '{}'
+          body: resolvedBody
         }
       };
     }
