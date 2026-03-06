@@ -289,6 +289,21 @@ export default {
         };
       }
 
+      // Validate body is a plain object (not null, array, or primitive)
+      if (body !== null && (typeof body !== 'object' || Array.isArray(body))) {
+        return {
+          action: 'mock',
+          stopProcessing: true,
+          mock: {
+            statusCode: 400,
+            headers: { 'Content-Type': 'application/json', 'X-Bucket-Source': 'bucket' },
+            body: JSON.stringify({ error: 'Request body must be a JSON object' })
+          },
+          metadata: { bucketMatched: true, bucketAction: 'error' }
+        };
+      }
+      if (body === null) body = {};
+
       const { id, error } = generateId(collection.idPattern || 'uuid', colPath, items, collection.idLength);
       if (error) {
         return {
@@ -391,6 +406,21 @@ export default {
             metadata: { bucketMatched: true, bucketAction: 'error' }
           };
         }
+
+        // Validate body is a plain object
+        if (body !== null && (typeof body !== 'object' || Array.isArray(body))) {
+          return {
+            action: 'mock',
+            stopProcessing: true,
+            mock: {
+              statusCode: 400,
+              headers: { 'Content-Type': 'application/json', 'X-Bucket-Source': 'bucket' },
+              body: JSON.stringify({ error: 'Request body must be a JSON object' })
+            },
+            metadata: { bucketMatched: true, bucketAction: 'error' }
+          };
+        }
+        if (body === null) body = {};
 
         // Apply body first, then set id so the URL resourceId is always authoritative
         // and cannot be overridden by a client-supplied id in the request body

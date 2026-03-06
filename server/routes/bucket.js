@@ -155,8 +155,9 @@ export function setupBucketRoutes(pluginController) {
         if (newResponseTemplate !== null && newResponseTemplate !== undefined) {
           if (typeof newResponseTemplate === 'object' && !Array.isArray(newResponseTemplate)) {
             updated[index].responseTemplate = newResponseTemplate;
+          } else {
+            return res.status(400).json({ error: 'responseTemplate must be a JSON object or null to clear' });
           }
-          // else ignore invalid value
         }
         // null/undefined in body = clear the template (don't set it)
       } else if (collection.responseTemplate !== undefined) {

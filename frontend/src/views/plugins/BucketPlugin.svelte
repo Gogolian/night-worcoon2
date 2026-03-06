@@ -3,7 +3,6 @@
   import { plugins, togglePlugin } from '../../stores/plugins.js';
   import PluginHeader from '../../components/organisms/PluginHeader.svelte';
   import PluginSection from '../../components/molecules/PluginSection.svelte';
-  import Card from '../../components/molecules/Card.svelte';
   import Button from '../../components/atoms/Button.svelte';
   import Input from '../../components/atoms/Input.svelte';
   import Badge from '../../components/atoms/Badge.svelte';
@@ -51,9 +50,21 @@
   async function loadData() {
     try {
       const res = await fetch('/__api/bucket/data');
-      bucketData = await res.json();
+      if (!res.ok) {
+        console.error('Bucket: loadData returned', res.status);
+        bucketData = {};
+        return;
+      }
+      const data = await res.json();
+      // Validate: each value should be an array
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        bucketData = data;
+      } else {
+        bucketData = {};
+      }
     } catch (err) {
       console.error('Bucket: failed to load data', err);
+      bucketData = {};
     }
   }
 
@@ -74,6 +85,7 @@
           })()
         })
       });
+      await loadData();
     } catch (err) {
       console.error('Bucket: failed to save collection', err);
     }
@@ -211,7 +223,7 @@
   // ── Computed ──────────────────────────────────────────────────────────────────
 
   $: selectedResources = getResourcesForSelected();
-  $: totalResources = Object.values(bucketData).reduce((sum, arr) => sum + arr.length, 0);
+  $: totalResources = Object.values(bucketData).reduce((sum, val) => sum + (Array.isArray(val) ? val.length : 0), 0);
 </script>
 
 <div class="plugin-page">
@@ -221,7 +233,7 @@
     <!-- ── Collections ─────────────────────────────────────────────────────── -->
     <PluginSection title="Collections">
       <div class="collections-list">
-        {#each collections as col, i (i)}
+        {#each collections as col, i (col.path)}
           <div class="collection-card">
             <div class="collection-card-header">
               <span class="collection-index">#{i}</span>
@@ -254,9 +266,10 @@
                       : col.idPattern === pattern}
                     on:click={() => {
                       if (pattern === 'custom') {
-                        // Switch to custom only if currently on a preset; otherwise keep existing regexp
+                        // Switch to custom only if currently on a preset; initialize with empty string
+                        // to show the regexp input rather than sending literal 'custom' to backend
                         if (col.idPattern === 'uuid' || col.idPattern === 'numeric' || col.idPattern === 'alphanumeric') {
-                          handlePatternSelect(i, '');
+                          handlePatternSelect(i, '[A-Z]{3}-\\d{4}');
                         }
                       } else {
                         handlePatternSelect(i, pattern);
@@ -386,9 +399,10 @@
         {:else}
           <div class="resource-list">
             {#each selectedResources as resource}
+              {@const jsonStr = JSON.stringify(resource)}
               <div class="resource-row">
                 <span class="resource-id">{resource.id}</span>
-                <span class="resource-preview">{JSON.stringify(resource).slice(0, 120)}{JSON.stringify(resource).length > 120 ? '…' : ''}</span>
+                <span class="resource-preview">{jsonStr.slice(0, 120)}{jsonStr.length > 120 ? '…' : ''}</span>
                 <div class="resource-actions">
                   <Button variant="secondary" size="small" on:click={() => openEditor(selectedDataIndex, resource)}>
                     Edit
@@ -442,7 +456,7 @@
           </tbody>
         </table>
 
-        <p class="about-note"><strong>Resolution order:</strong> :id → built-in tokens → integer:min:max → headers.X / body.X → regexp pattern fallback. Types: <code>boolean</code> returns JS boolean, <code>integer</code> returns JS number, all others return strings.</p>
+        <p class="about-note"><strong>Resolution order:</strong> :id → built-in tokens → integer:min:max → headers.X / body.X → regexp pattern fallback. Types: <code>boolean</code> returns JS boolean, <code>integer</code> and <code>location.flatNr</code> return JS numbers, all others return strings.</p>
       </div>
     </PluginSection>
   {/if}
@@ -452,11 +466,12 @@
 {#if editingResource}
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div class="modal-overlay" on:click|self={() => (editingResource = null)}>
-    <div class="modal">
+  <div class="modal-overlay" on:click|self={() => (editingResource = null)}
+       on:keydown={(e) => { if (e.key === 'Escape') editingResource = null; }}>
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Edit resource {editingResource.id}">
       <div class="modal-header">
         <span class="modal-title">Edit resource <code>{editingResource.id}</code></span>
-        <button class="modal-close" on:click={() => (editingResource = null)}>✕</button>
+        <button class="modal-close" on:click={() => (editingResource = null)} aria-label="Close dialog">✕</button>
       </div>
       <textarea
         class="json-editor"

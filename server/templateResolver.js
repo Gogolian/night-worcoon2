@@ -56,6 +56,7 @@ export const BUILTIN_TOKENS = {
   'uuid': () => randomUUID(),
   'boolean': () => Math.random() < 0.5,
   'integer': () => randInt(1, 1000),
+  'lorem': () => pick(LOREM_SENTENCES),
 };
 
 // ── Dynamic / parametric tokens ────────────────────────────────────────────────
@@ -67,8 +68,9 @@ export function resolveDynamicToken(token, context) {
   // {{ integer:min:max }}
   const intMatch = token.match(/^integer:(\d+):(\d+)$/);
   if (intMatch) {
-    const min = parseInt(intMatch[1], 10);
-    const max = parseInt(intMatch[2], 10);
+    let min = parseInt(intMatch[1], 10);
+    let max = parseInt(intMatch[2], 10);
+    if (min > max) [min, max] = [max, min];
     return { value: randInt(min, max), matched: true };
   }
 
@@ -222,8 +224,14 @@ export function generateFromPattern(pattern) {
     } else if (p[i] === '.') {
       chars = ALPHANUMERIC_CHARS;
     } else if (p[i] === '|') {
-      // Top-level alternation: treat everything before as one branch, skip rest
-      break;
+      // Top-level alternation: pick one branch randomly.
+      // Everything generated so far is the left branch; the rest of the string is the right branch.
+      const rightBranch = p.slice(i + 1);
+      if (Math.random() < 0.5) {
+        return result;
+      } else {
+        return generateFromPattern(rightBranch);
+      }
     } else {
       chars = p[i];
     }
@@ -289,8 +297,10 @@ export function applyTemplate(templateVal, context) {
   }
 
   if (typeof templateVal === 'object') {
-    const result = {};
+    const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+    const result = Object.create(null);
     for (const [key, val] of Object.entries(templateVal)) {
+      if (DANGEROUS_KEYS.has(key)) continue;
       result[key] = applyTemplate(val, context);
     }
     return result;
