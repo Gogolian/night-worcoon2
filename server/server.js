@@ -182,7 +182,8 @@ app.all('*', async (req, res) => {
       appInfo: {
         action: 'mock',
         ruleMatched: decision.metadata?.ruleMatched || null,
-        mockSource: decision.metadata?.mockSource || null
+        mockSource: decision.metadata?.mockSource || null,
+        bucketSource: (decision.metadata?.bucketAction && decision.metadata.bucketAction !== 'miss') ? decision.metadata.bucketAction : null
       }
     });
     return;

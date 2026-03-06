@@ -78,7 +78,13 @@ function getEntries({ url, method, status, action, limit = 100, offset = 0, sinc
     }
   }
   if (action) {
-    result = result.filter(e => e.appInfo.action === action);
+    if (action === 'bucket') {
+      result = result.filter(e => !!e.appInfo.bucketSource);
+    } else if (action === 'mock') {
+      result = result.filter(e => e.appInfo.action === 'mock' && !e.appInfo.bucketSource);
+    } else {
+      result = result.filter(e => e.appInfo.action === action);
+    }
   }
 
   const total = result.length;
@@ -94,13 +100,14 @@ function clearEntries() {
 /** Aggregate stats snapshot. */
 function getStats() {
   const total    = entries.length;
-  const mocked   = entries.filter(e => e.appInfo.action === 'mock').length;
+  const bucketed = entries.filter(e => !!e.appInfo.bucketSource).length;
+  const mocked   = entries.filter(e => e.appInfo.action === 'mock' && !e.appInfo.bucketSource).length;
   const proxied  = entries.filter(e => e.appInfo.action === 'proxy').length;
   const errors   = entries.filter(e => e.response.status >= 500).length;
   const avgLatency = total > 0
     ? Math.round(entries.reduce((s, e) => s + (e.latency || 0), 0) / total)
     : 0;
-  return { total, mocked, proxied, errors, avgLatency };
+  return { total, bucketed, mocked, proxied, errors, avgLatency };
 }
 
 export const logManager = {

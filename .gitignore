@@ -6,11 +6,15 @@ package-lock.json
 dist/
 build/
 *.log
+.vite/
 
 # State and recordings
 state.json
 recordings/
 rules/
+
+# Bucket runtime data
+bucket/data.json
 
 # IDE
 .idea/

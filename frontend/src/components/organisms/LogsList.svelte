@@ -79,7 +79,9 @@
             <span class="status-badge {statusClass(entry.response.status)}">{entry.response.status}</span>
           </span>
           <span class="col-action">
-            {#if entry.appInfo.action === 'mock'}
+            {#if entry.appInfo.bucketSource}
+              <span class="action-badge bucket">Bucket</span>
+            {:else if entry.appInfo.action === 'mock'}
               <span class="action-badge mock">Mock</span>
             {:else}
               <span class="action-badge proxy">Proxy</span>
@@ -209,6 +211,7 @@
   }
   .action-badge.mock  { background: #0c2a1a; color: #4ade80; border: 1px solid #14532d; }
   .action-badge.proxy { background: #111827; color: #6b7280; border: 1px solid #1f2937; }
+  .action-badge.bucket { background: #0c1a2a; color: #60a5fa; border: 1px solid #1e3a5f; text-transform: capitalize; }
 
   .col-rule {
     white-space: nowrap;

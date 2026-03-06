@@ -1,9 +1,8 @@
 <script>
-  import { afterUpdate, onDestroy } from 'svelte';
-  import * as ace from 'ace-builds';
   import Button from '../atoms/Button.svelte';
   import HttpMethodSelector from './HttpMethodSelector.svelte';
   import MatchRecordingUrlInput from '../atoms/MatchRecordingUrlInput.svelte';
+  import JsonTemplateEditor from './JsonTemplateEditor.svelte';
 
   export let rule;
   export let index;
@@ -13,60 +12,7 @@
   export let onActionChange;
   export let onInlineResponseChange;
 
-  // Ace editor state
-  let editorContainer;
-  let editor = null;
-  let editorInitialized = false;
-  let debounceTimer = null;
-
   $: isInline = rule.action === 'RET_INLINE';
-
-  // When switching away from RET_INLINE, destroy editor
-  $: if (!isInline && editorInitialized) {
-    destroyEditor();
-  }
-
-  afterUpdate(() => {
-    if (isInline && editorContainer && !editorInitialized) {
-      initEditor();
-    }
-  });
-
-  function initEditor() {
-    if (editorInitialized || !editorContainer) return;
-    ace.config.set('basePath', 'https://cdn.jsdelivr.net/npm/ace-builds@1.32.2/src-noconflict/');
-    editor = ace.edit(editorContainer);
-    editor.setTheme('ace/theme/monokai');
-    editor.session.setMode('ace/mode/json');
-    editor.setFontSize(12);
-    editor.setOptions({
-      showPrintMargin: false,
-      highlightActiveLine: true,
-      wrap: true,
-      tabSize: 2,
-    });
-    const body = rule.inlineResponse?.body ?? '{}';
-    editor.setValue(body, -1);
-    editor.session.on('change', () => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        const updated = {
-          ...(rule.inlineResponse || {}),
-          body: editor.getValue()
-        };
-        onInlineResponseChange && onInlineResponseChange(index, updated);
-      }, 400);
-    });
-    editorInitialized = true;
-  }
-
-  function destroyEditor() {
-    if (editor) {
-      editor.destroy();
-      editor = null;
-    }
-    editorInitialized = false;
-  }
 
   function handleStatusCodeChange(e) {
     const updated = {
@@ -76,10 +22,13 @@
     onInlineResponseChange && onInlineResponseChange(index, updated);
   }
 
-  onDestroy(() => {
-    destroyEditor();
-    clearTimeout(debounceTimer);
-  });
+  function handleBodyChange(e) {
+    const updated = {
+      ...(rule.inlineResponse || {}),
+      body: e.detail
+    };
+    onInlineResponseChange && onInlineResponseChange(index, updated);
+  }
 </script>
 
 <div class="rule-card">
@@ -157,7 +106,12 @@
           />
         </div>
       </div>
-      <div class="ace-wrap" bind:this={editorContainer}></div>
+      <JsonTemplateEditor
+        value={rule.inlineResponse?.body ?? '{}'}
+        height={280}
+        showTokenRef={true}
+        on:change={handleBodyChange}
+      />
     </div>
   {/if}
 </div>
@@ -199,27 +153,6 @@
     color: #9ca3af;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-  }
-
-  .url-input {
-    padding: 8px 12px;
-    background-color: #1a2847;
-    border: 2px solid #374151;
-    border-radius: 4px;
-    color: #d4d4d8;
-    font-size: 13px;
-    font-family: 'Courier New', monospace;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .url-input:focus {
-    outline: none;
-    border-color: #60a5fa;
-    box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.1);
-  }
-
-  .url-input::placeholder {
-    color: #6b7280;
   }
 
   .field-hint {
@@ -340,13 +273,5 @@
   .status-code-input:focus {
     outline: none;
     border-color: #60a5fa;
-  }
-
-  .ace-wrap {
-    width: 100%;
-    height: 280px;
-    border: 1px solid #1a2847;
-    border-radius: 4px;
-    overflow: hidden;
   }
 </style>
