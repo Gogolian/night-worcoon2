@@ -95,19 +95,22 @@ An optional field defining the **shape of the POST response**. It is a JSON obje
 
 ### Token resolution order
 
-1. `{{ :id }}` → the generated resource ID
-2. Built-in tokens (table below)
+1. `{{ :id }}` → the generated resource ID (injected from context)
+2. Static built-in tokens (`BUILTIN_TOKENS` — see table below)
 3. `{{ integer:min:max }}` → integer within the given range
 4. `{{ headers.HeaderName }}` → request header value
 5. `{{ body.fieldName }}` → field value from the JSON request body
 6. Fallback → `generateFromPattern(token)` — token treated as a regexp pattern
 
-### Built-in tokens
+### Supported tokens
+
+#### Static built-in tokens (`BUILTIN_TOKENS`)
+
+Zero-argument generator functions resolved from the `BUILTIN_TOKENS` map in `templateResolver.js`:
 
 | Token | Return type | Description |
 |-------|-------------|-------------|
-| `:id` | string | The generated resource ID |
-| `uuid` | string | Random UUID (independent of `:id`) |
+| `uuid` | string | Random UUID v4 |
 | `email` | string | Random e-mail drawn from Polish name pools |
 | `phoneNumber` | string | Polish mobile number: `48` + 9 digits |
 | `firstName` | string | Random Polish first name |
@@ -115,17 +118,25 @@ An optional field defining the **shape of the POST response**. It is a JSON obje
 | `date` | string | Current ISO 8601 timestamp |
 | `boolean` | boolean | Random `true` or `false` |
 | `integer` | number | Random number 1–1000 |
-| `integer:min:max` | number | Random number within the given range |
 | `location.streetName` | string | Random Polish street name |
 | `location.streetNr` | string | Building number 1–150 (~15% with a letter: `42A`) |
 | `location.zipCode` | string | Polish postal code `xx-xxx` |
 | `location.flatNr` | number | Flat number 1–200 |
-| `headers.X` | string | Value of header `X` from the request |
-| `body.X` | string | Value of field `X` from the JSON request body |
 | `lorem` | string | Random lorem ipsum sentence |
-| *(regexp)* | string | Fallback — generated from the pattern |
 
 **Type note:** `boolean` returns a JS boolean, `integer` and `location.flatNr` return a JS number, all others return strings.
+
+#### Dynamic / parametric tokens
+
+Handled by `resolveDynamicToken()` or injected from context — not present in `BUILTIN_TOKENS`:
+
+| Token | Return type | Description |
+|-------|-------------|-------------|
+| `:id` | string | The generated resource ID (context-injected) |
+| `integer:min:max` | number | Random number within the given range |
+| `headers.X` | string | Value of header `X` from the request |
+| `body.X` | string | Value of field `X` from the JSON request body |
+| *(any other string)* | string | Fallback — passed to `generateFromPattern()` as a regexp |
 
 ### Merging with the request body
 
@@ -165,8 +176,7 @@ Collection configuration — committed as the project's default starting point.
 ```
 server/
 ├── plugins/
-│   └── bucket.js           # Plugin handler — CRUD, ID generation, storage
-├── plugins/
+│   ├── bucket.js           # Plugin handler — CRUD, ID generation, storage
 │   └── bucket-data.js      # Data pools: names, streets, email domains, lorem
 ├── routes/
 │   └── bucket.js           # API routes for the UI (/__api/bucket/*)
@@ -246,7 +256,7 @@ Inline documentation — description of how Bucket works, token table, resolutio
 - **Log labels** — distinguishing `[BUCKET]` from `[MOCK]` in logs
 - **`bucketSource: 'miss'`** — metadata fix on cache miss
 - **`responseTemplate`** — collection field, `{{ token }}` placeholders in the POST response
-- **16 built-in tokens** + Polish data pools in `bucket-data.js`
+- **12 static built-in tokens** (`BUILTIN_TOKENS`) + 3 dynamic/parametric tokens (`integer:min:max`, `headers.*`, `body.*`) + the `:id` context token + Polish data pools in `bucket-data.js`
 - **Token reference in UI** — collapsible token reference in the editor
 
 ### Phase 3 — Sharing with Mock + Smart editor
