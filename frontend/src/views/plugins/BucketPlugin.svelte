@@ -71,7 +71,7 @@
   async function saveCollection(index) {
     const col = collections[index];
     try {
-      await fetch(`/__api/bucket/collections/${index}`, {
+      const res = await fetch(`/__api/bucket/collections/${index}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -85,6 +85,24 @@
           })()
         })
       });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        console.error('Bucket: saveCollection failed:', errData.error || res.status);
+        // Re-sync UI with the actual server state to avoid stale/invalid values
+        await loadCollections();
+        return;
+      }
+      const data = await res.json();
+      if (data.collection) {
+        // Update from server response so UI reflects normalized values (trimmed path, etc.)
+        // Keep _templateText since we just sent it and it was accepted
+        collections[index] = {
+          ...data.collection,
+          _templateText: collections[index]._templateText ?? '',
+          _templateError: ''
+        };
+        collections = [...collections];
+      }
       await loadData();
     } catch (err) {
       console.error('Bucket: failed to save collection', err);
@@ -462,12 +480,13 @@
   {/if}
 </div>
 
+<svelte:window on:keydown={(e) => { if (editingResource && e.key === 'Escape') editingResource = null; }} />
+
 <!-- ── JSON editor modal ──────────────────────────────────────────────────── -->
 {#if editingResource}
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div class="modal-overlay" on:click|self={() => (editingResource = null)}
-       on:keydown={(e) => { if (e.key === 'Escape') editingResource = null; }}>
+  <div class="modal-overlay" on:click|self={() => (editingResource = null)}>
     <div class="modal" role="dialog" aria-modal="true" aria-label="Edit resource {editingResource.id}">
       <div class="modal-header">
         <span class="modal-title">Edit resource <code>{editingResource.id}</code></span>
