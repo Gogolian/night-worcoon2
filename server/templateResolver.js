@@ -165,6 +165,36 @@ function parseQuantifier(p, i) {
 }
 
 /**
+ * Split a pattern string on top-level '|' characters, respecting nested groups
+ * and escaped pipes, so (a|(b|c)) or (ab\|cd|ef) are handled correctly.
+ * @param {string} s
+ * @returns {string[]}
+ */
+function splitTopLevelAlternation(s) {
+  const parts = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === '\\') { i++; continue; } // skip escaped char
+    if (s[i] === '(') depth++;
+    else if (s[i] === ')') depth--;
+    else if (s[i] === '[') {
+      // Skip until matching ]
+      i++;
+      while (i < s.length && s[i] !== ']') {
+        if (s[i] === '\\') i++;
+        i++;
+      }
+    } else if (s[i] === '|' && depth === 0) {
+      parts.push(s.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(s.slice(start));
+  return parts;
+}
+
+/**
  * Generate a random string that structurally matches the given regexp pattern.
  * Supports: character classes [abc], ranges [a-z], escape sequences \d \w \s \D \W,
  * quantifiers {n} {n,m} + * ?, anchors ^ $, groups (...) with alternation |, dot.
@@ -213,8 +243,8 @@ export function generateFromPattern(pattern) {
       const inner = p.slice(i + 1, j - 1);
       advance = j - i;
       const [, qLen, count] = parseQuantifier(p, i + advance);
-      // Handle alternation within group
-      const alternatives = inner.split('|');
+      // Handle alternation within group — use nesting-aware splitter
+      const alternatives = splitTopLevelAlternation(inner);
       for (let k = 0; k < count; k++) {
         const alt = alternatives[Math.floor(Math.random() * alternatives.length)];
         result += generateFromPattern(alt);

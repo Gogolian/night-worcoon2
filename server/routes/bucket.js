@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   storage,
+  counters,
   loadConfig,
   saveConfig,
   getCollection,
@@ -74,6 +75,18 @@ export function setupBucketRoutes(pluginController) {
         return res.status(400).json({ error: '"path" is required and must be a non-empty string' });
       }
       const normalizedPath = normalizePath(path.trim());
+
+      // Validate idPattern
+      if (!idPattern || typeof idPattern !== 'string' || !idPattern.trim()) {
+        return res.status(400).json({ error: '"idPattern" must be a non-empty string' });
+      }
+      const trimmedPattern = idPattern.trim();
+      if (trimmedPattern !== 'uuid' && trimmedPattern !== 'numeric' && trimmedPattern !== 'alphanumeric') {
+        try { new RegExp(`^(?:${trimmedPattern})$`); } catch (e) {
+          return res.status(400).json({ error: `Invalid idPattern regexp: ${e.message}` });
+        }
+      }
+
       const { collections } = getConfig();
 
       // Reject duplicate paths
@@ -82,7 +95,7 @@ export function setupBucketRoutes(pluginController) {
         return res.status(409).json({ error: `Collection with path "${normalizedPath}" already exists` });
       }
 
-      const newCollection = { path: normalizedPath, idPattern };
+      const newCollection = { path: normalizedPath, idPattern: trimmedPattern };
       if (idLength != null && Number(idLength) > 0) newCollection.idLength = Number(idLength);
       if (responseTemplate != null) {
         if (typeof responseTemplate !== 'object' || Array.isArray(responseTemplate)) {
@@ -127,6 +140,19 @@ export function setupBucketRoutes(pluginController) {
         updatedPath = normalizedNew;
       }
 
+      // Validate newIdPattern if provided
+      if (newIdPattern !== undefined) {
+        if (!newIdPattern || typeof newIdPattern !== 'string' || !newIdPattern.trim()) {
+          return res.status(400).json({ error: '"idPattern" must be a non-empty string' });
+        }
+        const tp = newIdPattern.trim();
+        if (tp !== 'uuid' && tp !== 'numeric' && tp !== 'alphanumeric') {
+          try { new RegExp(`^(?:${tp})$`); } catch (e) {
+            return res.status(400).json({ error: `Invalid idPattern regexp: ${e.message}` });
+          }
+        }
+      }
+
       // Migrate storage if path changed
       const oldKey = normalizePath(collection.path);
       const newKey = normalizePath(updatedPath);
@@ -136,10 +162,26 @@ export function setupBucketRoutes(pluginController) {
         scheduleSave();
       }
 
+      // Migrate numeric counter (even if there was no data to move)
+      if (oldKey !== newKey && counters.has(oldKey)) {
+        const movedItems = storage.get(newKey);
+        let maxId = counters.get(oldKey);
+        if (movedItems) {
+          for (const id of movedItems.keys()) {
+            if (/^\d+$/.test(id)) {
+              const num = Number(id);
+              if (num > maxId) maxId = num;
+            }
+          }
+        }
+        counters.set(newKey, maxId);
+        counters.delete(oldKey);
+      }
+
       const updated = [...collections];
       updated[index] = {
         path: updatedPath,
-        idPattern: newIdPattern !== undefined ? newIdPattern : collection.idPattern
+        idPattern: newIdPattern !== undefined ? newIdPattern.trim() : collection.idPattern
       };
       // Carry over or update idLength — send null/0 to clear it
       if (newIdLength !== undefined) {
@@ -296,6 +338,12 @@ export function setupBucketRoutes(pluginController) {
       const resource = { ...req.body, id };
       items.set(id, resource);
       scheduleSave();
+
+      // Keep numeric counter in sync if the id is numeric
+      if (/^\d+$/.test(id)) {
+        const num = Number(id);
+        if (num > (counters.get(key) || 0)) counters.set(key, num);
+      }
 
       console.log(`🪣 Bucket: Manually set resource "${id}" in "${key}"`);
       res.json({ success: true, resource });

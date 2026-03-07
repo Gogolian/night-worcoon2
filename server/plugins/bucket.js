@@ -85,9 +85,7 @@ function loadConfig() {
   try {
     if (existsSync(CONFIG_FILE)) {
       const raw = readFileSync(CONFIG_FILE, 'utf8');
-      const parsed = JSON.parse(raw);
-      console.log(`🪣 Bucket: Loaded config with ${(parsed.collections || []).length} collection(s)`);
-      return parsed;
+      return JSON.parse(raw);
     }
   } catch (err) {
     console.error('🪣 Bucket: Failed to load config:', err.message);
@@ -144,14 +142,17 @@ function generateId(pattern, collectionPath, existingItems, idLength) {
   }
 
   if (pattern === 'numeric') {
-    const current = counters.get(collectionPath) || 0;
-    const next = current + 1;
-    counters.set(collectionPath, next);
-    // Zero-pad if idLength specified
-    const id = idLength && idLength > 0
-      ? String(next).padStart(idLength, '0')
-      : String(next);
-    return { id, error: null };
+    // Loop until we find an unused ID (guards against counter/data desync)
+    for (let attempt = 0; attempt < 10000; attempt++) {
+      const current = counters.get(collectionPath) || 0;
+      const next = current + 1;
+      counters.set(collectionPath, next);
+      const id = idLength && idLength > 0
+        ? String(next).padStart(idLength, '0')
+        : String(next);
+      if (!existingItems.has(id)) return { id, error: null };
+    }
+    return { id: null, error: 'Numeric ID generation failed — counter desynced with existing items' };
   }
 
   if (pattern === 'alphanumeric') {
@@ -211,7 +212,15 @@ function matchCollection(pathname, collections) {
       // Check if there's exactly one more segment (the ID)
       const remainder = normalized.slice(colPath.length + 1);
       if (remainder && !remainder.includes('/')) {
-        return { collection: col, normalizedColPath: colPath, resourceId: remainder };
+        let resourceId;
+        try {
+          resourceId = decodeURIComponent(remainder);
+        } catch {
+          resourceId = remainder;
+        }
+        // Reject IDs that decode to include '/' — ambiguous routing
+        if (resourceId.includes('/')) continue;
+        return { collection: col, normalizedColPath: colPath, resourceId };
       }
     }
   }
