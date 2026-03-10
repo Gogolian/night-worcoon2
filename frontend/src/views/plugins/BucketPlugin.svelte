@@ -1,6 +1,9 @@
 <script>
   import { onMount } from 'svelte';
   import { plugins, togglePlugin } from '../../stores/plugins.js';
+  import { loadFromBucketOperation } from '../../stores/requester.js';
+  import { currentRoute } from '../../stores/router.js';
+  import { toast } from '../../stores/toast.js';
   import PluginHeader from '../../components/organisms/PluginHeader.svelte';
   import PluginSection from '../../components/molecules/PluginSection.svelte';
   import Button from '../../components/atoms/Button.svelte';
@@ -237,7 +240,59 @@
   async function handleToggle() {
     if (plugin) await togglePlugin(plugin.name, !plugin.enabled);
   }
+  // ── Try-in-POST helpers ───────────────────────────────────────────────────
 
+  /**
+   * Build a body skeleton from a responseTemplate, replacing {{ token }} values
+   * with sensible empty/typed defaults so the developer has a valid JSON stub.
+   */
+  function generateBodySkeleton(responseTemplate) {
+    if (!responseTemplate || typeof responseTemplate !== 'object') return '{}';  
+    function replaceTokens(obj) {
+      if (typeof obj === 'string') {
+        const m = obj.match(/^\{\{\s*(.+?)\s*\}\}$/);
+        if (m) {
+          const token = m[1].trim();
+          if (token === 'boolean') return false;
+          if (token === 'integer' || token.startsWith('integer:')) return 0;
+          if (token === ':id') return '';
+          return '';
+        }
+        return obj;
+      }
+      if (Array.isArray(obj)) return obj.map(replaceTokens);
+      if (obj && typeof obj === 'object') {
+        const out = {};
+        for (const [k, v] of Object.entries(obj)) out[k] = replaceTokens(v);
+        return out;
+      }
+      return obj;
+    }
+    return JSON.stringify(replaceTokens(responseTemplate), null, 2);
+  }
+
+  /** Return the first existing resource ID for a collection, or the string ':id'. */
+  function getFirstId(collectionIndex) {
+    const col = collections[collectionIndex];
+    if (!col) return ':id';
+    const resources = bucketData[col.path];
+    if (Array.isArray(resources) && resources.length > 0) return resources[0].id;
+    return ':id';
+  }
+
+  /** Open POST tab pre-filled for the given HTTP verb + collection. */
+  function tryInPostTab(method, col, collectionIndex) {
+    const needsId = ['GET_ONE', 'PATCH', 'DELETE'].includes(method);
+    const id = needsId ? getFirstId(collectionIndex) : null;
+    const path = needsId ? `${col.path}/${id}` : col.path;
+    const verb = method === 'GET_ONE' ? 'GET' : method;
+    const noBody = ['GET', 'DELETE'].includes(verb);
+    const bodyObj = (!noBody && col.responseTemplate) ? generateBodySkeleton(col.responseTemplate) : null;
+    const body = bodyObj ?? '{}';  
+    loadFromBucketOperation({ method: verb, path, body: noBody ? '{}' : body });
+    currentRoute.set('post');
+    toast.show(`POST tab → ${verb} ${path}`, 'success', 2500);
+  }
   // ── Computed ──────────────────────────────────────────────────────────────────
 
   $: selectedResources = getResourcesForSelected();
@@ -365,6 +420,38 @@
                   }
                 }}
               />
+            </div>
+
+            <!-- ── Try in POST tab ────────────────────────────────────────── -->
+            <div class="try-in-post">
+              <span class="try-in-post-label">Try in POST tab</span>
+              <div class="try-btns">
+                <button
+                  class="try-btn try-btn--get"
+                  title="GET {col.path} — list all resources"
+                  on:click={() => tryInPostTab('GET', col, i)}
+                >GET list</button>
+                <button
+                  class="try-btn try-btn--get"
+                  title="GET {col.path}/{getFirstId(i)} — fetch single resource"
+                  on:click={() => tryInPostTab('GET_ONE', col, i)}
+                >GET one</button>
+                <button
+                  class="try-btn try-btn--post"
+                  title="POST {col.path} — create a new resource"
+                  on:click={() => tryInPostTab('POST', col, i)}
+                >POST</button>
+                <button
+                  class="try-btn try-btn--patch"
+                  title="PATCH {col.path}/{getFirstId(i)} — update a resource"
+                  on:click={() => tryInPostTab('PATCH', col, i)}
+                >PATCH</button>
+                <button
+                  class="try-btn try-btn--delete"
+                  title="DELETE {col.path}/{getFirstId(i)} — delete a resource"
+                  on:click={() => tryInPostTab('DELETE', col, i)}
+                >DELETE</button>
+              </div>
             </div>
           </div>
         {/each}
@@ -639,6 +726,101 @@
     font-size: 10px;
     color: #6b7280;
     font-weight: normal;
+  }
+
+  /* ── Try in POST tab ─────────────────────────────────────────────────────── */
+  .try-in-post {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 10px;
+    border-top: 1px solid #1a2847;
+    margin-top: 2px;
+  }
+
+  .try-in-post-label {
+    font-size: 10px;
+    color: #4b5563;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+  }
+
+  .try-btns {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+
+  .try-btn {
+    padding: 4px 11px;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: inherit;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: filter 0.15s ease, transform 0.1s ease;
+    letter-spacing: 0.3px;
+  }
+
+  .try-btn:hover {
+    filter: brightness(1.2);
+  }
+
+  .try-btn:active {
+    transform: scale(0.96);
+  }
+
+  /* GET — teal/green */
+  .try-btn--get {
+    background: #052e16;
+    border-color: #166534;
+    color: #4ade80;
+  }
+
+  .try-btn--get:hover {
+    background: #14532d;
+    border-color: #22c55e;
+  }
+
+  /* POST — blue */
+  .try-btn--post {
+    background: #1e3a5f;
+    border-color: #2563eb;
+    color: #93c5fd;
+  }
+
+  .try-btn--post:hover {
+    background: #1d4ed8;
+    border-color: #60a5fa;
+    color: #dbeafe;
+  }
+
+  /* PATCH — amber */
+  .try-btn--patch {
+    background: #451a03;
+    border-color: #b45309;
+    color: #fbbf24;
+  }
+
+  .try-btn--patch:hover {
+    background: #78350f;
+    border-color: #f59e0b;
+    color: #fde68a;
+  }
+
+  /* DELETE — red */
+  .try-btn--delete {
+    background: #2d0505;
+    border-color: #991b1b;
+    color: #f87171;
+  }
+
+  .try-btn--delete:hover {
+    background: #7f1d1d;
+    border-color: #ef4444;
+    color: #fecaca;
   }
 
   /* ── Add collection ──────────────────────────────────────────────────────── */

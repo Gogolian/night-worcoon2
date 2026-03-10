@@ -265,6 +265,58 @@ export function setupApiRoutes(pluginController, state) {
     }
   });
 
+  // ── Local request — routes through plugin pipeline (bucket, mock, recorder…) ──
+  router.post('/request-local', async (req, res) => {
+    const { method = 'GET', path: reqPath = '/', headers: userHeaders = {}, body } = req.body || {};
+    const activeSet  = getActiveConfigSet(state);
+    const baseHdrs   = activeSet.requestHeaders || {};
+    const merged     = { ...baseHdrs, ...userHeaders };
+    const startTime  = Date.now();
+    const localPort  = state.proxyPort || 8079;
+
+    try {
+      const normalPath = reqPath.startsWith('/') ? reqPath : '/' + reqPath;
+      const fullUrl    = `http://localhost:${localPort}${normalPath}`;
+
+      const reqHeaders = { 'Content-Type': 'application/json', ...merged };
+      const bodyBuf = (body && !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase()))
+        ? Buffer.from(body, 'utf8')
+        : null;
+      if (bodyBuf) reqHeaders['Content-Length'] = String(bodyBuf.length);
+
+      const options = {
+        hostname: 'localhost',
+        port    : localPort,
+        path    : normalPath,
+        method  : method.toUpperCase(),
+        headers : reqHeaders
+      };
+
+      const result = await new Promise((resolve, reject) => {
+        const request = http.request(options, (proxyRes) => {
+          const chunks = [];
+          proxyRes.on('data', chunk => chunks.push(chunk));
+          proxyRes.on('end', () => resolve({
+            status    : proxyRes.statusCode,
+            statusText: proxyRes.statusMessage,
+            headers   : proxyRes.headers,
+            body      : Buffer.concat(chunks).toString('utf8'),
+            latency   : Date.now() - startTime,
+            url       : fullUrl
+          }));
+          proxyRes.on('error', reject);
+        });
+        request.on('error', reject);
+        if (bodyBuf) request.write(bodyBuf);
+        request.end();
+      });
+
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: err.message, latency: Date.now() - startTime });
+    }
+  });
+
   // Get all plugins
   router.get('/plugins', (req, res) => {
     res.json({ plugins: pluginController.getPluginsInfo() });

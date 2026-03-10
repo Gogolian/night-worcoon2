@@ -8,6 +8,12 @@ export const response       = writable(null);
 export const loading        = writable(false);
 export const requestError   = writable(null);
 
+/**
+ * 'proxy'  → /__api/request  → forwarded to the configured end-system targetUrl
+ * 'local'  → /__api/request-local → loopback to nightworcoon (bucket, mock, etc. run)
+ */
+export const requestTarget  = writable('proxy');
+
 // Set to true by loadFromLogEntry so fetchActiveHeaders() won't clobber pre-loaded headers
 let _headersPreloaded = false;
 
@@ -77,21 +83,37 @@ export function loadFromLogEntry(entry) {
 }
 
 /**
+ * Pre-fill the requester from a bucket collection operation so the developer
+ * can fire CRUD requests against a collection directly from the Bucket page.
+ * Auto-switches target to 'local' so the request runs through the plugin pipeline.
+ */
+export function loadFromBucketOperation({ method, path, body }) {
+  requestMethod.set(method);
+  requestPath.set(path);
+  requestBody.set(body || '{\n  \n}');
+  requestTarget.set('local');
+  response.set(null);
+  requestError.set(null);
+}
+
+/**
  * Send the configured request through the backend proxy endpoint.
  */
 export async function sendRequest() {
   loading.set(true);
   requestError.set(null);
   try {
-    const method  = get(requestMethod);
-    const path    = get(requestPath);
-    const hdrs    = get(requestHeaders)
+    const method   = get(requestMethod);
+    const path     = get(requestPath);
+    const hdrs     = get(requestHeaders)
       .filter(h => h.enabled && h.key.trim())
       .reduce((acc, h) => { acc[h.key.trim()] = h.value.trim(); return acc; }, {});
-    const bodyVal = get(requestBody);
-    const noBody  = ['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase());
+    const bodyVal  = get(requestBody);
+    const noBody   = ['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase());
+    const target   = get(requestTarget);
+    const endpoint = target === 'local' ? '/__api/request-local' : '/__api/request';
 
-    const res = await fetch('/__api/request', {
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ method, path, headers: hdrs, body: noBody ? undefined : bodyVal })

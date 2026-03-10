@@ -5,7 +5,7 @@
   import MatchRecordingUrlInput from '../components/atoms/MatchRecordingUrlInput.svelte';
   import {
     requestMethod, requestPath, requestHeaders, requestBody,
-    response, loading, requestError,
+    response, loading, requestError, requestTarget,
     fetchActiveHeaders, sendRequest
   } from '../stores/requester.js';
 
@@ -159,8 +159,36 @@
 <div class="post-view">
   <h1>POST <span class="subtitle">— Request Client</span></h1>
 
-  <!-- ── URL bar ───────────────────────────────────────────────────────────── -->
-  <div class="url-bar">
+  <!-- ── Target selector ───────────────────────────────────────── -->
+  <div class="target-bar">
+    <span class="target-label">Send to</span>
+    <div class="target-toggle">
+      <button
+        class="target-btn"
+        class:active={$requestTarget === 'proxy'}
+        on:click={() => requestTarget.set('proxy')}
+        title="Forward request to the configured target URL (end system)"
+      >
+        ↗️ End System
+      </button>
+      <button
+        class="target-btn target-btn--local"
+        class:active={$requestTarget === 'local'}
+        on:click={() => requestTarget.set('local')}
+        title="Send directly to NightWorcoon — plugin pipeline runs (bucket, mock, recorder…)"
+      >
+        ⚡ NightWorcoon
+      </button>
+    </div>
+    {#if $requestTarget === 'local'}
+      <span class="target-hint">Runs through plugin pipeline — bucket, mock &amp; recorder are active</span>
+    {:else}
+      <span class="target-hint">Bypasses plugins — goes straight to configured target URL</span>
+    {/if}
+  </div>
+
+  <!-- ── URL bar ─────────────────────────────────────────────── -->
+  <div class="url-bar" class:url-bar--local={$requestTarget === 'local'}>
     <div class="method-wrap">
       <HttpMethodSelector
         selected={$requestMethod}
@@ -313,11 +341,82 @@
     color: #6b7280;
   }
 
-  /* ── URL bar ────────────────────────────────────────────────────────────── */
+  /* ── Target selector ────────────────────────────────────────────── */
+  .target-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .target-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #4b5563;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+  }
+
+  .target-toggle {
+    display: flex;
+    border: 1px solid #1a2847;
+    border-radius: 4px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .target-btn {
+    padding: 5px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: inherit;
+    border: none;
+    background: #0d1626;
+    color: #4b5563;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+
+  .target-btn:not(:last-child) {
+    border-right: 1px solid #1a2847;
+  }
+
+  .target-btn:hover {
+    background: #1a2847;
+    color: #9ca3af;
+  }
+
+  .target-btn.active {
+    background: #1a2847;
+    color: #d4d4d8;
+  }
+
+  /* NightWorcoon button — highlighted amber when active (signals "plugin pipeline") */
+  .target-btn--local.active {
+    background: #451a03;
+    color: #fbbf24;
+    border-color: #92400e;
+  }
+
+  .target-hint {
+    font-size: 11px;
+    color: #4b5563;
+    font-style: italic;
+  }
+
+  /* ── URL bar ──────────────────────────────────────────────── */
   .url-bar {
     display: flex;
     gap: 8px;
     align-items: flex-start;
+  }
+
+  /* Amber left-border accent when targeting NightWorcoon */
+  .url-bar--local {
+    border-left: 3px solid #b45309;
+    padding-left: 10px;
   }
 
   .method-wrap {
