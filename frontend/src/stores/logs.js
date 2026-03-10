@@ -3,7 +3,7 @@ import { writable, get } from 'svelte/store';
 // Core stores
 export const logEntries  = writable([]);
 export const logTotal    = writable(0);
-export const logStats    = writable({ total: 0, mocked: 0, proxied: 0, errors: 0, avgLatency: 0 });
+export const logStats    = writable({ total: 0, bucketed: 0, mocked: 0, proxied: 0, errors: 0, avgLatency: 0 });
 export const logsLoading = writable(false);
 
 // Active filter state (shared between store and view)
@@ -78,6 +78,7 @@ export async function fetchStats() {
     const prev = get(logStats);
     if (
       data.total       !== prev.total       ||
+      data.bucketed    !== prev.bucketed    ||
       data.mocked      !== prev.mocked      ||
       data.proxied     !== prev.proxied     ||
       data.errors      !== prev.errors      ||
@@ -99,7 +100,7 @@ export async function clearLogs() {
     if (!res.ok) throw new Error('Failed to clear logs');
     logEntries.set([]);
     logTotal.set(0);
-    logStats.set({ total: 0, mocked: 0, proxied: 0, errors: 0, avgLatency: 0 });
+    logStats.set({ total: 0, bucketed: 0, mocked: 0, proxied: 0, errors: 0, avgLatency: 0 });
   } catch (err) {
     console.error('Error clearing logs:', err);
     throw err;

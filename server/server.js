@@ -12,6 +12,8 @@ import { setupRulesRoutes } from './routes/rules.js';
 import { setupRecordingsRoutes } from './routes/recordings.js';
 import { setupWebSocketRoutes } from './routes/websocket.js';
 import { setupLogsRoutes } from './routes/logs.js';
+import { setupBucketRoutes } from './routes/bucket.js';
+import { loadConfig as loadBucketConfig } from './plugins/bucket.js';
 import { loadState, saveState, getActiveConfigSet } from './stateManager.js';
 import { logManager } from './logManager.js';
 
@@ -63,7 +65,14 @@ try {
 } catch (err) {
   console.error('Failed to load active rules on startup:', err.message);
 }
-
+// Load bucket config on startup
+try {
+  const bucketConfig = loadBucketConfig();
+  pluginController.setPluginConfig('bucket', bucketConfig);
+  console.log(`\u2713 Loaded bucket config with ${(bucketConfig.collections || []).length} collection(s)`);
+} catch (err) {
+  console.error('Failed to load bucket config on startup:', err.message);
+}
 // Middleware
 app.use(cors());
 
@@ -106,6 +115,7 @@ app.use('/__api/rules', setupRulesRoutes(pluginController, state));
 app.use('/__api/recordings', setupRecordingsRoutes());
 app.use('/__api/websocket', setupWebSocketRoutes(wsConnections, wsMessageLog, state));
 app.use('/__api/logs', setupLogsRoutes(logManager));
+app.use('/__api/bucket', setupBucketRoutes(pluginController));
 
 // Proxy error handling
 proxy.on('error', (err, req, res) => {
@@ -172,7 +182,8 @@ app.all('*', async (req, res) => {
       appInfo: {
         action: 'mock',
         ruleMatched: decision.metadata?.ruleMatched || null,
-        mockSource: decision.metadata?.mockSource || null
+        mockSource: decision.metadata?.mockSource || null,
+        bucketSource: (decision.metadata?.bucketAction && decision.metadata.bucketAction !== 'miss') ? decision.metadata.bucketAction : null
       }
     });
     return;
