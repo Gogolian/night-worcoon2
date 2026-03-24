@@ -221,11 +221,13 @@ app.all('*', async (req, res) => {
   // Proxy options - use active config set's target URL
   const proxyOptions = {
     target: activeConfigSet.targetUrl || 'http://localhost:8078',
-    changeOrigin: true,
+    changeOrigin: activeConfigSet.changeOrigin !== undefined ? activeConfigSet.changeOrigin : true,
     selfHandleResponse: true,
-    followRedirects: true,
+    followRedirects: activeConfigSet.followRedirects !== undefined ? activeConfigSet.followRedirects : true,
     secure: false // Allow self-signed certificates (for development)
   };
+
+  debugLog(`⚙️ [${req.method}] Proxy config: changeOrigin=${proxyOptions.changeOrigin}, followRedirects=${proxyOptions.followRedirects}`);
 
   // Create a stream from the buffered body if present
   if (req.rawBody && req.rawBody.length > 0) {

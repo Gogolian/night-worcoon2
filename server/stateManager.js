@@ -7,18 +7,22 @@ const __dirname = dirname(__filename);
 
 const STATE_FILE = join(__dirname, '..', 'state.json');
 
+const DEFAULT_CONFIG_SET = {
+  id: 'default',
+  name: 'Default',
+  targetUrl: 'http://localhost:8078',
+  requestHeaders: {},
+  changeOrigin: true,
+  followRedirects: true
+};
+
 const DEFAULT_STATE = {
   proxyPort: 8079,
   plugins: {},
   pluginOrder: ['logger', 'cors', 'bucket', 'mock', 'recorder'],
   debugLogs: false,
   configSets: [
-    {
-      id: 'default',
-      name: 'Default',
-      targetUrl: 'http://localhost:8078',
-      requestHeaders: {}
-    }
+    DEFAULT_CONFIG_SET
   ],
   activeConfigSet: 'default',
   activeRulesSet: 'active',
@@ -83,6 +87,27 @@ export function loadState() {
         state.activeConfigSet = DEFAULT_STATE.activeConfigSet;
         saveState(state);
       }
+
+      // Migration: ensure proxy behavior flags exist on every config set
+      let configSetsMigrated = false;
+      state.configSets = state.configSets.map((set) => {
+        const normalizedSet = {
+          ...DEFAULT_CONFIG_SET,
+          ...set,
+          requestHeaders: set.requestHeaders || {}
+        };
+
+        if (normalizedSet.changeOrigin !== set.changeOrigin || normalizedSet.followRedirects !== set.followRedirects) {
+          configSetsMigrated = true;
+        }
+
+        return normalizedSet;
+      });
+      if (configSetsMigrated) {
+        console.log('⚠️  Migrating config sets: adding proxy behavior defaults...');
+        saveState(state);
+        console.log('✓ Config sets migrated');
+      }
       
       // Ensure activeConfigSet is valid
       if (!state.activeConfigSet || !state.configSets.find(s => s.id === state.activeConfigSet)) {
@@ -133,11 +158,11 @@ export function updateState(currentState, updates) {
  */
 export function getActiveConfigSet(state) {
   if (!state.configSets || state.configSets.length === 0) {
-    return DEFAULT_STATE.configSets[0];
+    return { ...DEFAULT_CONFIG_SET };
   }
   
   const activeSet = state.configSets.find(s => s.id === state.activeConfigSet);
-  return activeSet || state.configSets[0];
+  return { ...DEFAULT_CONFIG_SET, ...(activeSet || state.configSets[0]), requestHeaders: (activeSet || state.configSets[0])?.requestHeaders || {} };
 }
 
 /**

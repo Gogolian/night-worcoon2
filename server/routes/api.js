@@ -25,6 +25,8 @@ export function setupApiRoutes(pluginController, state) {
       proxyPort: state.proxyPort || 8079,
       targetUrl: activeSet.targetUrl,
       requestHeaders: activeSet.requestHeaders || {},
+      changeOrigin: activeSet.changeOrigin,
+      followRedirects: activeSet.followRedirects,
       debugLogs: state.debugLogs || false,
       activeRulesSet: state.activeRulesSet || 'active'
     });
@@ -32,7 +34,7 @@ export function setupApiRoutes(pluginController, state) {
 
   // Update configuration
   router.post('/config', (req, res) => {
-    const { proxyPort, targetUrl, requestHeaders, debugLogs, autoRestart, activeRulesSet } = req.body;
+    const { proxyPort, targetUrl, requestHeaders, changeOrigin, followRedirects, debugLogs, autoRestart, activeRulesSet } = req.body;
     
     if (proxyPort !== undefined) {
       state.proxyPort = parseInt(proxyPort, 10);
@@ -51,6 +53,16 @@ export function setupApiRoutes(pluginController, state) {
       if (requestHeaders !== undefined) {
         state.configSets[setIndex].requestHeaders = requestHeaders;
         console.log(`✓ Request headers updated (no restart needed)`);
+      }
+
+      if (changeOrigin !== undefined) {
+        state.configSets[setIndex].changeOrigin = Boolean(changeOrigin);
+        console.log(`✓ changeOrigin updated to: ${state.configSets[setIndex].changeOrigin} (no restart needed)`);
+      }
+
+      if (followRedirects !== undefined) {
+        state.configSets[setIndex].followRedirects = Boolean(followRedirects);
+        console.log(`✓ followRedirects updated to: ${state.configSets[setIndex].followRedirects} (no restart needed)`);
       }
     }
     
@@ -84,6 +96,8 @@ export function setupApiRoutes(pluginController, state) {
       proxyPort: state.proxyPort,
       targetUrl: updatedSet.targetUrl,
       requestHeaders: updatedSet.requestHeaders,
+      changeOrigin: updatedSet.changeOrigin,
+      followRedirects: updatedSet.followRedirects,
       debugLogs: state.debugLogs,
       message: 'Configuration saved and applied (no restart needed)'
     });
@@ -112,7 +126,7 @@ export function setupApiRoutes(pluginController, state) {
 
   // Create a new config set
   router.post('/config-sets', (req, res) => {
-    const { name, targetUrl, requestHeaders } = req.body;
+    const { name, targetUrl, requestHeaders, changeOrigin = true, followRedirects = true } = req.body;
     
     if (!name || !targetUrl) {
       return res.status(400).json({ error: 'Name and targetUrl are required' });
@@ -125,7 +139,9 @@ export function setupApiRoutes(pluginController, state) {
       id,
       name,
       targetUrl,
-      requestHeaders: requestHeaders || {}
+      requestHeaders: requestHeaders || {},
+      changeOrigin: Boolean(changeOrigin),
+      followRedirects: Boolean(followRedirects)
     };
     
     state.configSets.push(newSet);
@@ -137,7 +153,7 @@ export function setupApiRoutes(pluginController, state) {
   // Update a config set
   router.put('/config-sets/:id', (req, res) => {
     const { id } = req.params;
-    const { name, targetUrl, requestHeaders } = req.body;
+    const { name, targetUrl, requestHeaders, changeOrigin, followRedirects } = req.body;
     
     if (!state.configSets) state.configSets = [];
     
@@ -149,6 +165,8 @@ export function setupApiRoutes(pluginController, state) {
     if (name !== undefined) state.configSets[setIndex].name = name;
     if (targetUrl !== undefined) state.configSets[setIndex].targetUrl = targetUrl;
     if (requestHeaders !== undefined) state.configSets[setIndex].requestHeaders = requestHeaders;
+    if (changeOrigin !== undefined) state.configSets[setIndex].changeOrigin = Boolean(changeOrigin);
+    if (followRedirects !== undefined) state.configSets[setIndex].followRedirects = Boolean(followRedirects);
     
     saveState(state);
     
