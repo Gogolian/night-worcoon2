@@ -144,6 +144,10 @@
     return 'status-5xx';
   }
 
+  function headerValues(value) {
+    return Array.isArray(value) ? value : [value];
+  }
+
   // ── keyboard shortcut ──────────────────────────────────────────────────────
 
   function handleKeyDown(e) {
@@ -310,7 +314,11 @@
           {#each Object.entries($response.headers ?? {}) as [k, v]}
             <div class="res-header-row">
               <span class="res-hdr-key">{k}</span>
-              <span class="res-hdr-val">{v}</span>
+              <span class="res-hdr-val">
+                {#each headerValues(v) as value, index (index)}
+                  <span class="res-hdr-val-line">{value}</span>
+                {/each}
+              </span>
             </div>
           {/each}
         </div>
@@ -711,5 +719,12 @@
   .res-hdr-val {
     color: #d4d4d8;
     word-break: break-all;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .res-hdr-val-line {
+    display: block;
   }
 </style>

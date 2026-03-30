@@ -1,26 +1,3 @@
 {
-  "collections": [
-    {
-      "path": "/api/collection",
-      "idPattern": "numeric",
-      "responseTemplate": {
-        "firstName": "{{ firstName }}",
-        "lastName": "{{ lastName }}"
-      }
-    },
-    {
-      "path": "/api/agreement",
-      "idPattern": "P-AGR-\\d{6}",
-      "responseTemplate": {
-        "id": "{{ :id }}",
-        "businessId": "{{ :id }}",
-        "audit": {
-          "createdDate": "{{ date }}",
-          "createdBy": "{{ headers.X-User-Id }}"
-        },
-        "name": "{{ body.name }}",
-        "email": "{{ email }}"
-      }
-    }
-  ]
+  "collections": []
 }

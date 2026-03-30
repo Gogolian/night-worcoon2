@@ -3,8 +3,162 @@
  * Circular buffer of up to MAX_LOG_ENTRIES entries.
  */
 
+import { brotliDecompressSync, gunzipSync, inflateRawSync, inflateSync } from 'zlib';
+
 const MAX_LOG_ENTRIES = 10000;
 const MAX_BODY_BYTES  = 50 * 1024; // 50 KB cap per body field
+
+function getHeaderValue(headers, name) {
+  if (!headers || !name) return null;
+
+  const lookupName = name.toLowerCase();
+  for (const [headerName, headerValue] of Object.entries(headers)) {
+    if (headerName.toLowerCase() !== lookupName) continue;
+    if (Array.isArray(headerValue)) return headerValue.join(', ');
+    return headerValue == null ? null : String(headerValue);
+  }
+
+  return null;
+}
+
+function getContentEncodings(headers) {
+  const encodingHeader = getHeaderValue(headers, 'content-encoding');
+  if (!encodingHeader) return [];
+
+  return encodingHeader
+    .split(',')
+    .map(part => part.trim().toLowerCase())
+    .filter(part => part && part !== 'identity');
+}
+
+function getContentType(headers) {
+  const contentType = getHeaderValue(headers, 'content-type');
+  return contentType ? contentType.split(';')[0].trim().toLowerCase() : '';
+}
+
+function getCharset(headers) {
+  const contentType = getHeaderValue(headers, 'content-type') || '';
+  const match = contentType.match(/charset\s*=\s*['"]?([^;'"]+)/i);
+  const charset = match ? match[1].trim().toLowerCase() : 'utf-8';
+
+  switch (charset) {
+    case 'utf-8':
+    case 'utf8':
+      return 'utf8';
+    case 'utf-16le':
+    case 'utf16le':
+    case 'ucs-2':
+    case 'ucs2':
+      return 'utf16le';
+    case 'latin1':
+    case 'iso-8859-1':
+    case 'iso8859-1':
+      return 'latin1';
+    case 'ascii':
+    case 'us-ascii':
+      return 'ascii';
+    default:
+      return 'utf8';
+  }
+}
+
+function isTextLikeContentType(headers) {
+  const contentType = getContentType(headers);
+
+  if (!contentType) return true;
+  if (contentType.startsWith('text/')) return true;
+
+  return [
+    'application/json',
+    'application/xml',
+    'application/javascript',
+    'application/x-javascript',
+    'application/typescript',
+    'application/x-www-form-urlencoded',
+    'application/graphql',
+    'application/graphql-response+json',
+    'image/svg+xml'
+  ].includes(contentType)
+    || contentType.endsWith('+json')
+    || contentType.endsWith('+xml');
+}
+
+function decompressBody(buffer, encodings) {
+  let decoded = buffer;
+
+  for (let i = encodings.length - 1; i >= 0; i--) {
+    const encoding = encodings[i];
+
+    switch (encoding) {
+      case 'br':
+        decoded = brotliDecompressSync(decoded);
+        break;
+      case 'gzip':
+      case 'x-gzip':
+        decoded = gunzipSync(decoded);
+        break;
+      case 'deflate':
+        try {
+          decoded = inflateSync(decoded);
+        } catch {
+          decoded = inflateRawSync(decoded);
+        }
+        break;
+      default:
+        throw new Error(`Unsupported content-encoding: ${encoding}`);
+    }
+  }
+
+  return decoded;
+}
+
+function formatBinaryPlaceholder({ contentType, encodings, size }) {
+  const typeLabel = contentType || 'application/octet-stream';
+  const encodingLabel = encodings.length > 0 ? `; content-encoding=${encodings.join(', ')}` : '';
+  return `[binary body omitted; content-type=${typeLabel}; ${size} bytes${encodingLabel}]`;
+}
+
+function decodeBodyForLogging(body, headers = {}) {
+  if (body == null) return null;
+
+  let buffer;
+  if (Buffer.isBuffer(body)) {
+    buffer = body;
+  } else if (body instanceof Uint8Array) {
+    buffer = Buffer.from(body);
+  } else if (typeof body === 'string') {
+    buffer = Buffer.from(body);
+  } else {
+    buffer = Buffer.from(String(body));
+  }
+
+  if (buffer.length === 0) return null;
+
+  const encodings = getContentEncodings(headers);
+  let decodedBuffer = buffer;
+
+  if (encodings.length > 0) {
+    try {
+      decodedBuffer = decompressBody(buffer, encodings);
+    } catch (error) {
+      return `[unable to decode body for logging; content-encoding=${encodings.join(', ')}; error=${error.message}; ${buffer.length} bytes]`;
+    }
+  }
+
+  if (!isTextLikeContentType(headers)) {
+    return formatBinaryPlaceholder({
+      contentType: getContentType(headers),
+      encodings,
+      size: decodedBuffer.length
+    });
+  }
+
+  try {
+    return decodedBuffer.toString(getCharset(headers));
+  } catch {
+    return decodedBuffer.toString('utf8');
+  }
+}
 
 /** Truncate a string to MAX_BODY_BYTES, adding a note if cut. */
 function truncateBody(str) {
@@ -115,6 +269,7 @@ export const logManager = {
   getEntries,
   clearEntries,
   getStats,
+  decodeBodyForLogging,
   truncateBody,
   makeId
 };

@@ -2,6 +2,7 @@ import express from 'express';
 import http from 'http';
 import https from 'https';
 import { saveState, getActiveConfigSet } from '../stateManager.js';
+import { logManager } from '../logManager.js';
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -266,7 +267,7 @@ export function setupApiRoutes(pluginController, state) {
             status    : proxyRes.statusCode,
             statusText: proxyRes.statusMessage,
             headers   : proxyRes.headers,
-            body      : Buffer.concat(chunks).toString('utf8'),
+            body      : logManager.decodeBodyForLogging(Buffer.concat(chunks), proxyRes.headers),
             latency   : Date.now() - startTime,
             url       : fullUrl
           }));
@@ -318,7 +319,7 @@ export function setupApiRoutes(pluginController, state) {
             status    : proxyRes.statusCode,
             statusText: proxyRes.statusMessage,
             headers   : proxyRes.headers,
-            body      : Buffer.concat(chunks).toString('utf8'),
+            body      : logManager.decodeBodyForLogging(Buffer.concat(chunks), proxyRes.headers),
             latency   : Date.now() - startTime,
             url       : fullUrl
           }));

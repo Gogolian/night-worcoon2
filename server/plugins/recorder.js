@@ -1,6 +1,7 @@
 import { writeFileSync, mkdirSync, readdirSync, readFileSync, unlinkSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { logManager } from '../logManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -75,18 +76,19 @@ export default {
           let requestData = null;
           if (actualBody.length > 0) {
             try {
-              requestData = JSON.parse(actualBody.toString('utf8'));
+              requestData = JSON.parse(logManager.decodeBodyForLogging(actualBody, req.headers));
             } catch (e) {
-              requestData = actualBody.toString('utf8');
+              requestData = logManager.decodeBodyForLogging(actualBody, req.headers);
             }
           }
           
           // Parse response body
+          const decodedResponseBody = logManager.decodeBodyForLogging(responseBody, proxyRes.headers);
           let responseData = null;
           try {
-            responseData = JSON.parse(responseBody.toString('utf8'));
+            responseData = JSON.parse(decodedResponseBody);
           } catch (e) {
-            responseData = responseBody.toString('utf8');
+            responseData = decodedResponseBody;
           }
           
           // Prepare recording data in simplified format

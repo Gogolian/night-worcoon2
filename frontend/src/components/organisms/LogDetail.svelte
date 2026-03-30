@@ -36,6 +36,10 @@
     if (src === 'fallback')  return 'Fallback (no recording)';
     return src;
   }
+
+  function headerValues(value) {
+    return Array.isArray(value) ? value : [value];
+  }
 </script>
 
 {#if entry}
@@ -76,7 +80,11 @@
             {#each Object.entries(entry.request.headers || {}) as [k, v]}
               <div class="header-row">
                 <span class="header-key">{k}</span>
-                <span class="header-val">{v}</span>
+                <span class="header-val">
+                  {#each headerValues(v) as value, index (index)}
+                    <span class="header-val-line">{value}</span>
+                  {/each}
+                </span>
               </div>
             {/each}
           </div>
@@ -110,7 +118,11 @@
             {#each Object.entries(entry.response.headers || {}) as [k, v]}
               <div class="header-row">
                 <span class="header-key">{k}</span>
-                <span class="header-val">{v}</span>
+                <span class="header-val">
+                  {#each headerValues(v) as value, index (index)}
+                    <span class="header-val-line">{value}</span>
+                  {/each}
+                </span>
               </div>
             {/each}
           </div>
@@ -360,7 +372,15 @@
   }
   .header-row:last-child { border-bottom: none; }
   .header-key { color: #818cf8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .header-val { color: #c7d2fe; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .header-val {
+    color: #c7d2fe;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .header-val-line { white-space: normal; word-break: break-all; }
 
   .body-pre {
     background: #060912;

@@ -171,7 +171,7 @@ app.all('*', async (req, res) => {
         method: req.method,
         url: req.url,
         headers: req.headers,
-        body: logManager.truncateBody(req.rawBody && req.rawBody.length > 0 ? req.rawBody.toString('utf8') : null)
+        body: logManager.truncateBody(logManager.decodeBodyForLogging(req.rawBody, req.headers))
       },
       response: {
         status: decision.mock.statusCode || 200,
@@ -277,12 +277,12 @@ proxy.on('proxyRes', (proxyRes, req, res) => {
           method: req.method,
           url: req.url,
           headers: req.headers,
-          body: logManager.truncateBody(req.rawBody && req.rawBody.length > 0 ? req.rawBody.toString('utf8') : null)
+          body: logManager.truncateBody(logManager.decodeBodyForLogging(req.rawBody, req.headers))
         },
         response: {
           status: proxyRes.statusCode,
           headers: proxyRes.headers,
-          body: logManager.truncateBody(responseBody.length > 0 ? responseBody.toString('utf8') : null),
+          body: logManager.truncateBody(logManager.decodeBodyForLogging(responseBody, proxyRes.headers)),
           size: responseBody.length
         },
         appInfo: {
@@ -354,12 +354,12 @@ proxy.on('proxyRes', (proxyRes, req, res) => {
           method: req.method,
           url: req.url,
           headers: req.headers,
-          body: logManager.truncateBody(req.rawBody && req.rawBody.length > 0 ? req.rawBody.toString('utf8') : null)
+          body: logManager.truncateBody(logManager.decodeBodyForLogging(req.rawBody, req.headers))
         },
         response: {
           status: finalStatusCode,
           headers: finalHeaders,
-          body: logManager.truncateBody(finalBody.length > 0 ? finalBody.toString('utf8') : null),
+          body: logManager.truncateBody(logManager.decodeBodyForLogging(finalBody, finalHeaders)),
           size: finalBody.length
         },
         appInfo: {
