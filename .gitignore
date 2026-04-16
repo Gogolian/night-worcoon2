@@ -10,6 +10,7 @@ build/
 
 # State and recordings
 state.json
+cli/config.json
 recordings/
 rules/
 
