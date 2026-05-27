@@ -35,7 +35,7 @@
     try {
       const text = e.detail?.trim();
       const parsed = text ? JSON.parse(text) : {};
-      if (parsed === null || Array.isArray(parsed) || typeof parsed !== 'object') {
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
         return;
       }
 
@@ -44,7 +44,7 @@
         headers: parsed
       };
       onInlineResponseChange && onInlineResponseChange(index, updated);
-    } catch (_) {
+    } catch {
       // Keep the last valid headers while the user is typing invalid JSON.
     }
   }
