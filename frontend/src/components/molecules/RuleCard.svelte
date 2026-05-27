@@ -35,7 +35,7 @@
     try {
       const text = e.detail?.trim();
       const parsed = text ? JSON.parse(text) : {};
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      if (Object.prototype.toString.call(parsed) !== '[object Object]') {
         return;
       }
 
