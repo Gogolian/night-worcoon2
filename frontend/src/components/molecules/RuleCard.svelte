@@ -33,7 +33,7 @@
 
   function handleHeadersChange(e) {
     try {
-      const text = e.detail?.trim();
+      const text = typeof e.detail === 'string' ? e.detail.trim() : '';
       const parsed = text ? JSON.parse(text) : {};
       if (Object.prototype.toString.call(parsed) !== '[object Object]') {
         return;
