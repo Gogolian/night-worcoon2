@@ -13,6 +13,7 @@
   export let onInlineResponseChange;
 
   $: isInline = rule.action === 'RET_INLINE';
+  $: responseHeaders = JSON.stringify(rule.inlineResponse?.headers ?? {}, null, 2);
 
   function handleStatusCodeChange(e) {
     const updated = {
@@ -28,6 +29,23 @@
       body: e.detail
     };
     onInlineResponseChange && onInlineResponseChange(index, updated);
+  }
+
+  function handleHeadersChange(e) {
+    try {
+      const parsed = JSON.parse(e.detail || '{}');
+      if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+        return;
+      }
+
+      const updated = {
+        ...(rule.inlineResponse || {}),
+        headers: parsed
+      };
+      onInlineResponseChange && onInlineResponseChange(index, updated);
+    } catch (_) {
+      // Keep the last valid headers while the user is typing invalid JSON.
+    }
   }
 </script>
 
@@ -105,6 +123,15 @@
             on:change={handleStatusCodeChange}
           />
         </div>
+      </div>
+      <div class="headers-editor-wrap">
+        <span class="field-label">Response Headers</span>
+        <JsonTemplateEditor
+          value={responseHeaders}
+          height={140}
+          on:change={handleHeadersChange}
+        />
+        <span class="field-hint">Define response headers as a JSON object.</span>
       </div>
       <JsonTemplateEditor
         value={rule.inlineResponse?.body ?? '{}'}
