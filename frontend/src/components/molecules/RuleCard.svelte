@@ -35,7 +35,8 @@
     try {
       const text = typeof e.detail === 'string' ? e.detail.trim() : '';
       const parsed = text ? JSON.parse(text) : {};
-      if (Object.prototype.toString.call(parsed) !== '[object Object]') {
+      const isHeaderMap = parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed);
+      if (!isHeaderMap) {
         return;
       }
 
