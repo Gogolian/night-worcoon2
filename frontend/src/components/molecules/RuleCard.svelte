@@ -33,8 +33,9 @@
 
   function handleHeadersChange(e) {
     try {
-      const parsed = JSON.parse(e.detail || '{}');
-      if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+      const text = e.detail?.trim();
+      const parsed = text ? JSON.parse(text) : {};
+      if (parsed === null || Array.isArray(parsed) || typeof parsed !== 'object') {
         return;
       }
 
