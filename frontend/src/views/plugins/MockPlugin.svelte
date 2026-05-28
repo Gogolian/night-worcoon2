@@ -45,7 +45,7 @@
           action: 'RET_INLINE',
           inlineResponse: {
             statusCode: pending.response.status || 200,
-            headers: {},
+            headers: pending.response.headers || {},
             body: prettyBody
           }
         };
