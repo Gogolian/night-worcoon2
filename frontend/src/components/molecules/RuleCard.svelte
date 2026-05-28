@@ -112,21 +112,19 @@
 
   {#if isInline}
     <div class="rule-field inline-response-section">
-      <div class="inline-response-header">
-        <span class="field-label">Inline Response</span>
-        <div class="status-code-wrap">
-          <span class="field-label">Status</span>
-          <input
-            type="number"
-            class="status-code-input"
-            value={rule.inlineResponse?.statusCode ?? 200}
-            min="100"
-            max="599"
-            on:change={handleStatusCodeChange}
-          />
-        </div>
+      <div class="status-code-row">
+        <span class="field-label">Status</span>
+        <input
+          type="number"
+          class="status-code-input"
+          value={rule.inlineResponse?.statusCode ?? 200}
+          min="100"
+          max="599"
+          on:change={handleStatusCodeChange}
+        />
       </div>
-      <div class="headers-editor-wrap">
+
+      <div class="editor-field">
         <span class="field-label">Response Headers</span>
         <JsonTemplateEditor
           value={responseHeaders}
@@ -135,12 +133,16 @@
         />
         <span class="field-hint">Define response headers as a JSON object.</span>
       </div>
-      <JsonTemplateEditor
-        value={rule.inlineResponse?.body ?? '{}'}
-        height={280}
-        showTokenRef={true}
-        on:change={handleBodyChange}
-      />
+
+      <div class="editor-field">
+        <span class="field-label">Response Body</span>
+        <JsonTemplateEditor
+          value={rule.inlineResponse?.body ?? '{}'}
+          height={280}
+          showTokenRef={true}
+          on:change={handleBodyChange}
+        />
+      </div>
     </div>
   {/if}
 </div>
@@ -275,17 +277,18 @@
     gap: 8px;
   }
 
-  .inline-response-header {
+  .status-code-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
+    gap: 8px;
     margin-bottom: 4px;
   }
 
-  .status-code-wrap {
+  .editor-field {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    flex-direction: column;
+    gap: 6px;
   }
 
   .status-code-input {

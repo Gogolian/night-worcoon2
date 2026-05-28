@@ -1,6 +1,7 @@
 <script>
   import { onDestroy, onMount } from 'svelte';
   import Button from '../atoms/Button.svelte';
+  import { apiFetch, parseJsonResponse } from '../../lib/api.js';
   import { toast } from '../../stores/toast.js';
 
   let configSets = [];
@@ -86,8 +87,13 @@
 
   async function loadConfigSets() {
     try {
-      const response = await fetch('/__api/config-sets');
-      const data = await response.json();
+      const response = await apiFetch('/__api/config-sets');
+      const data = (await parseJsonResponse(response, 'Loading config sets')) || {};
+
+      if (!response.ok) {
+        throw new Error(data.error || `Failed to load config sets (${response.status})`);
+      }
+
       configSets = data.configSets || [];
       activeConfigSet = data.activeConfigSet || 'default';
       syncActiveFormFromList();
@@ -155,13 +161,13 @@
     const requestId = ++latestActiveSaveRequestId;
 
     try {
-      const response = await fetch(`/__api/config-sets/${activeSet.id}`, {
+      const response = await apiFetch(`/__api/config-sets/${activeSet.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formToPayload(editForm))
       });
 
-      const data = await response.json();
+      const data = (await parseJsonResponse(response, 'Saving config set')) || {};
 
       if (!data.success) {
         if (requestId === latestActiveSaveRequestId) {
@@ -217,12 +223,12 @@
 
     switchingSet = true;
     try {
-      const response = await fetch(`/__api/config-sets/${id}/activate`, {
+      const response = await apiFetch(`/__api/config-sets/${id}/activate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
 
-      const data = await response.json();
+      const data = (await parseJsonResponse(response, 'Activating config set')) || {};
 
       if (data.success) {
         activeConfigSet = id;
@@ -342,13 +348,13 @@
 
     loading = true;
     try {
-      const response = await fetch('/__api/config-sets', {
+      const response = await apiFetch('/__api/config-sets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formToPayload(newForm))
       });
 
-      const data = await response.json();
+      const data = (await parseJsonResponse(response, 'Creating config set')) || {};
 
       if (data.success) {
         configSets = [...configSets, data.configSet];
@@ -372,11 +378,11 @@
 
     loading = true;
     try {
-      const response = await fetch(`/__api/config-sets/${id}`, {
+      const response = await apiFetch(`/__api/config-sets/${id}`, {
         method: 'DELETE'
       });
 
-      const data = await response.json();
+      const data = (await parseJsonResponse(response, 'Deleting config set')) || {};
 
       if (data.success) {
         configSets = configSets.filter(set => set.id !== id);
