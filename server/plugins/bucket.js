@@ -1,16 +1,6 @@
 import { randomUUID } from 'crypto';
-import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { col } from '../db.js';
 import { applyTemplate, generateFromPattern } from '../templateResolver.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// ── Paths ──────────────────────────────────────────────────────────────────────
-const BUCKET_DIR = join(__dirname, '..', '..', 'bucket');
-const DATA_FILE = join(BUCKET_DIR, 'data.json');
-const CONFIG_FILE = join(BUCKET_DIR, 'config.json');
 
 // ── In-memory storage ──────────────────────────────────────────────────────────
 // Map<collectionPath, Map<id, object>>
@@ -19,14 +9,10 @@ const storage = new Map();
 // Numeric auto-increment counters per collection
 const counters = new Map();
 
-// ── Ensure bucket directory exists ─────────────────────────────────────────────
-function ensureBucketDir() {
-  if (!existsSync(BUCKET_DIR)) {
-    mkdirSync(BUCKET_DIR, { recursive: true });
-  }
-}
+// In-memory bucket config cache (kept synchronous so routes/bucket.js doesn't change)
+let bucketConfig = { collections: [] };
 
-// ── Debounced atomic write ─────────────────────────────────────────────────────
+// ── Debounced write-through to MongoDB ─────────────────────────────────────────
 let saveTimer = null;
 
 function scheduleSave() {
@@ -34,82 +20,89 @@ function scheduleSave() {
   saveTimer = setTimeout(() => flushData(), 100);
 }
 
-function flushData() {
+async function flushData() {
   if (saveTimer) {
     clearTimeout(saveTimer);
     saveTimer = null;
   }
   try {
-    ensureBucketDir();
-    const serialized = {};
-    for (const [path, items] of storage.entries()) {
-      serialized[path] = Object.fromEntries(items);
+    const bucketData = col('bucket_data');
+    const currentPaths = Array.from(storage.keys());
+
+    const ops = currentPaths.map(path => ({
+      replaceOne: {
+        filter: { _id: path },
+        replacement: { _id: path, items: Object.fromEntries(storage.get(path)) },
+        upsert: true
+      }
+    }));
+
+    if (ops.length > 0) {
+      await bucketData.bulkWrite(ops);
     }
-    const tmp = DATA_FILE + '.tmp';
-    writeFileSync(tmp, JSON.stringify(serialized, null, 2), 'utf8');
-    renameSync(tmp, DATA_FILE);
+
+    // Remove docs for collections that no longer exist in storage
+    await bucketData.deleteMany({ _id: { $nin: currentPaths } });
   } catch (err) {
-    console.error('🪣 Bucket: Failed to persist data:', err.message);
+    console.error('🪣 Bucket: Failed to persist data to MongoDB:', err.message);
   }
+}
+
+// ── Config (synchronous cache + async write-through) ──────────────────────────
+
+function loadConfig() {
+  return bucketConfig;
 }
 
 function saveConfig(collections) {
-  try {
-    ensureBucketDir();
-    const tmp = CONFIG_FILE + '.tmp';
-    writeFileSync(tmp, JSON.stringify({ collections }, null, 2), 'utf8');
-    renameSync(tmp, CONFIG_FILE);
-  } catch (err) {
-    console.error('🪣 Bucket: Failed to persist config:', err.message);
-  }
+  bucketConfig = { collections };
+  col('bucket_collections')
+    .updateOne(
+      { _id: 'config' },
+      { $set: { collections } },
+      { upsert: true }
+    )
+    .catch(err => console.error('🪣 Bucket: Failed to persist config to MongoDB:', err.message));
 }
 
-// ── Load persisted data on import ──────────────────────────────────────────────
-function loadData() {
-  try {
-    if (existsSync(DATA_FILE)) {
-      const raw = readFileSync(DATA_FILE, 'utf8');
-      const parsed = JSON.parse(raw);
-      for (const [path, items] of Object.entries(parsed)) {
-        const map = new Map(Object.entries(items));
-        storage.set(path, map);
-      }
-      console.log(`🪣 Bucket: Loaded ${storage.size} collection(s) from data.json`);
-    }
-  } catch (err) {
-    console.error('🪣 Bucket: Failed to load data:', err.message);
-  }
+function getBucketConfig() {
+  return bucketConfig;
 }
 
-function loadConfig() {
-  try {
-    if (existsSync(CONFIG_FILE)) {
-      const raw = readFileSync(CONFIG_FILE, 'utf8');
-      return JSON.parse(raw);
-    }
-  } catch (err) {
-    console.error('🪣 Bucket: Failed to load config:', err.message);
-  }
-  return { collections: [] };
-}
-
-// Reconstruct numeric counters from persisted data
+// ── Reconstruct numeric counters from in-memory data ──────────────────────────
 function rebuildCounters() {
   for (const [path, items] of storage.entries()) {
     let max = 0;
     for (const id of items.keys()) {
-        if (/^\d+$/.test(id)) {
-            const num = Number(id);
-            if (num > max) max = num;
+      if (/^\d+$/.test(id)) {
+        const num = Number(id);
+        if (num > max) max = num;
       }
     }
     if (max > 0) counters.set(path, max);
   }
 }
 
-// Initialize on module load
-loadData();
-rebuildCounters();
+// ── Bootstrap: load from MongoDB ──────────────────────────────────────────────
+export async function initBucket() {
+  try {
+    const configDoc = await col('bucket_collections').findOne({ _id: 'config' });
+    if (configDoc) {
+      bucketConfig = { collections: configDoc.collections || [] };
+      console.log(`🪣 Bucket: Loaded config with ${bucketConfig.collections.length} collection(s) from MongoDB`);
+    }
+
+    const dataDocs = await col('bucket_data').find({}).toArray();
+    for (const doc of dataDocs) {
+      const map = new Map(Object.entries(doc.items || {}));
+      storage.set(doc._id, map);
+    }
+    console.log(`🪣 Bucket: Loaded ${storage.size} collection(s) of data from MongoDB`);
+    rebuildCounters();
+  } catch (err) {
+    console.error('🪣 Bucket: Failed to initialise from MongoDB:', err.message);
+  }
+}
 
 // ── ID generators ──────────────────────────────────────────────────────────────
 const ALPHANUMERIC_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -122,14 +115,6 @@ function generateAlphanumeric(length = 8) {
   return result;
 }
 
-/**
- * Generate a unique ID for a collection.
- * @param {string} pattern   - 'uuid' | 'numeric' | 'alphanumeric' | custom regexp string
- * @param {string} collectionPath - collection path (for numeric counter tracking)
- * @param {Map}    existingItems  - existing items map to check uniqueness
- * @param {number} [idLength]     - optional: zero-pad width (numeric) or string length (alphanumeric)
- * @returns {{ id: string|null, error: string|null }}
- */
 function generateId(pattern, collectionPath, existingItems, idLength) {
   const MAX_RETRIES = 10;
 
@@ -142,7 +127,6 @@ function generateId(pattern, collectionPath, existingItems, idLength) {
   }
 
   if (pattern === 'numeric') {
-    // Loop until we find an unused ID (guards against counter/data desync)
     for (let attempt = 0; attempt < 10000; attempt++) {
       const current = counters.get(collectionPath) || 0;
       const next = current + 1;
@@ -164,8 +148,6 @@ function generateId(pattern, collectionPath, existingItems, idLength) {
     return { id: null, error: 'Alphanumeric collision limit reached' };
   }
 
-  // Custom regexp pattern — generate from the pattern structure directly, then
-  // verify the result still matches (guards against edge cases in the generator).
   try {
     const regex = new RegExp(`^(?:${pattern})$`);
     for (let i = 0; i < MAX_RETRIES; i++) {
@@ -189,27 +171,17 @@ function getCollection(path) {
 }
 
 // ── Helper: match request path to a configured collection ──────────────────────
-/**
- * @param {string} pathname - e.g. /api/users or /api/users/abc-123
- * @param {Array} collections - configured collections
- * @returns {{ collection: object, resourceId: string|null } | null}
- */
 function matchCollection(pathname, collections) {
-  // Normalize: ensure leading slash, remove trailing slash.
-  // Special case: '/' must stay '/' after normalization (otherwise it becomes '' and
-  // would incorrectly match every path as a resource request).
   const normalized = normalizePath(pathname);
 
   for (const col of collections) {
     const colPath = normalizePath(col.path);
 
     if (normalized === colPath) {
-      // Exact match — collection-level request
       return { collection: col, normalizedColPath: colPath, resourceId: null };
     }
 
     if (normalized.startsWith(colPath + '/')) {
-      // Check if there's exactly one more segment (the ID)
       const remainder = normalized.slice(colPath.length + 1);
       if (remainder && !remainder.includes('/')) {
         let resourceId;
@@ -218,7 +190,6 @@ function matchCollection(pathname, collections) {
         } catch {
           resourceId = remainder;
         }
-        // Reject IDs that decode to include '/' — ambiguous routing
         if (resourceId.includes('/')) continue;
         return { collection: col, normalizedColPath: colPath, resourceId };
       }
@@ -227,25 +198,16 @@ function matchCollection(pathname, collections) {
   return null;
 }
 
-// ── Path normalization (shared with routes) ────────────────────────────────────
-/**
- * Normalize a collection path: ensure leading slash, remove trailing slash.
- * '/' is preserved as-is to support a potential root collection.
- */
+// ── Path normalization ─────────────────────────────────────────────────────────
 export function normalizePath(p) {
   const raw = p.startsWith('/') ? p : '/' + p;
   return raw.length > 1 ? raw.replace(/\/+$/, '') : raw;
 }
 
 // ── Exported helpers for API routes ────────────────────────────────────────────
-export { storage, counters, loadConfig, saveConfig, getCollection, flushData, ensureBucketDir, scheduleSave, generateId };
+export { storage, counters, loadConfig, saveConfig, getBucketConfig, getCollection, flushData, scheduleSave, generateId };
 
 // ── Plugin definition ──────────────────────────────────────────────────────────
-/**
- * Bucket plugin — CRUD storage bucket
- * Stores and serves resources created via POST.
- * Falls through to mock/proxy when a resource is not found.
- */
 export default {
   name: 'bucket',
   description: 'CRUD storage bucket — stores and serves resources created via POST',
@@ -258,23 +220,17 @@ export default {
       return {};
     }
 
-    // Parse request URL
     const url = new URL(req.url, `http://${req.headers.host}`);
     const pathname = url.pathname;
     const method = req.method.toUpperCase();
 
-    // Try to match against configured collections
     const match = matchCollection(pathname, collections);
 
     if (!match) {
-      // No collection matched — don't interfere with pipeline
       return {};
     }
 
     const { collection, normalizedColPath, resourceId } = match;
-    // Always use the normalized path as the storage/counter key so that collection
-    // paths with different formatting (e.g. /api/users vs api/users/) map to the
-    // same bucket data and never lose previously persisted resources.
     const colPath = normalizedColPath;
     const items = getCollection(colPath);
 
@@ -298,7 +254,6 @@ export default {
         };
       }
 
-      // Validate body is a plain object (not null, array, or primitive)
       if (body !== null && (typeof body !== 'object' || Array.isArray(body))) {
         return {
           action: 'mock',
@@ -327,13 +282,9 @@ export default {
         };
       }
 
-      // Build resource — apply template first (if defined), then merge in extra
-      // request body fields that are NOT already covered by the template, then
-      // force the generated id to always be authoritative.
       let resource;
       if (collection.responseTemplate && typeof collection.responseTemplate === 'object') {
         const resolved = applyTemplate(collection.responseTemplate, { id, req, body });
-        // Merge request body fields that are absent from the resolved template
         const extra = {};
         for (const [k, v] of Object.entries(body)) {
           if (!(k in resolved)) extra[k] = v;
@@ -390,7 +341,6 @@ export default {
           metadata: { bucketMatched: true, bucketAction: 'retrieved' }
         };
       }
-      // Not found — fall through with metadata
       console.log(`🪣 Bucket: Miss for GET ${resourceId} in ${colPath}, falling through`);
       return { metadata: { bucketMatched: true, bucketAction: 'miss' } };
     }
@@ -416,7 +366,6 @@ export default {
           };
         }
 
-        // Validate body is a plain object
         if (body !== null && (typeof body !== 'object' || Array.isArray(body))) {
           return {
             action: 'mock',
@@ -431,8 +380,6 @@ export default {
         }
         if (body === null) body = {};
 
-        // Apply body first, then set id so the URL resourceId is always authoritative
-        // and cannot be overridden by a client-supplied id in the request body
         const resource = { ...body, id: resourceId };
         items.set(resourceId, resource);
         scheduleSave();
@@ -449,7 +396,6 @@ export default {
           metadata: { bucketMatched: true, bucketAction: 'updated' }
         };
       }
-      // Not found — fall through with metadata
       console.log(`🪣 Bucket: Miss for PATCH ${resourceId} in ${colPath}, falling through`);
       return { metadata: { bucketMatched: true, bucketAction: 'miss' } };
     }
@@ -472,12 +418,10 @@ export default {
           metadata: { bucketMatched: true, bucketAction: 'deleted' }
         };
       }
-      // Not found — fall through with metadata
       console.log(`🪣 Bucket: Miss for DELETE ${resourceId} in ${colPath}, falling through`);
       return { metadata: { bucketMatched: true, bucketAction: 'miss' } };
     }
 
-    // Unhandled method on a matched collection — fall through
     return { metadata: { bucketMatched: true, bucketAction: 'miss' } };
   }
 };
