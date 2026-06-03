@@ -1,6 +1,7 @@
 import express from 'express';
 import httpProxy from 'http-proxy';
 import cors from 'cors';
+import { readFileSync, existsSync } from 'fs';
 import { writeFile, mkdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -14,7 +15,7 @@ import { setupLogsRoutes } from './routes/logs.js';
 import { setupBucketRoutes } from './routes/bucket.js';
 import { initBucket, getBucketConfig, flushData } from './plugins/bucket.js';
 import { loadState, saveState, getActiveConfigSet } from './stateManager.js';
-import { connectDb, closeDb, col } from './db.js';
+import { connectDb, closeDb, col, isDbConnected } from './db.js';
 import { logManager } from './logManager.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -58,14 +59,23 @@ async function bootstrap() {
   await initBucket();
   pluginController.setPluginConfig('bucket', getBucketConfig());
 
-  // ── 5. Load active rules from MongoDB ────────────────────────────────────────
+  // ── 5. Load active rules from MongoDB or file ────────────────────────────────
   try {
     const activeRulesSet = state.activeRulesSet || 'active';
-    const doc = await col('rules').findOne({ _id: activeRulesSet });
-    if (doc) {
-      const { _id, ...rules } = doc;
-      pluginController.setPluginConfig('mock', rules);
-      console.log(`✓ Loaded mock rules from MongoDB (${activeRulesSet})`);
+    if (isDbConnected()) {
+      const doc = await col('rules').findOne({ _id: activeRulesSet });
+      if (doc) {
+        const { _id, ...rules } = doc;
+        pluginController.setPluginConfig('mock', rules);
+        console.log(`✓ Loaded mock rules from MongoDB (${activeRulesSet})`);
+      }
+    } else {
+      const rulesPath = join(__dirname, '..', 'rules', `${activeRulesSet}.json`);
+      if (existsSync(rulesPath)) {
+        const rules = JSON.parse(readFileSync(rulesPath, 'utf8'));
+        pluginController.setPluginConfig('mock', rules);
+        console.log(`✓ Loaded mock rules from ${activeRulesSet}.json`);
+      }
     }
   } catch (err) {
     console.error('Failed to load active rules on startup:', err.message);
@@ -606,9 +616,9 @@ async function bootstrap() {
 
   // ── Graceful shutdown ─────────────────────────────────────────────────────────
   const shutdown = async (sig) => {
-    console.log(`\n${sig} received — flushing data and closing MongoDB connection...`);
+    console.log(`\n${sig} received — flushing data...`);
     await flushData();
-    await closeDb();
+    if (isDbConnected()) await closeDb();
     process.exit(0);
   };
 
