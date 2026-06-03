@@ -1,14 +1,15 @@
 import express from 'express';
 import http from 'http';
 import https from 'https';
-import { saveState, getActiveConfigSet } from '../stateManager.js';
-import { logManager } from '../logManager.js';
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { saveState, getActiveConfigSet } from '../stateManager.js';
+import { logManager } from '../logManager.js';
+import { col, isDbConnected } from '../db.js';
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const __dirname  = dirname(__filename);
 
 const router = express.Router();
 
@@ -34,7 +35,7 @@ export function setupApiRoutes(pluginController, state) {
   });
 
   // Update configuration
-  router.post('/config', (req, res) => {
+  router.post('/config', async (req, res) => {
     const { proxyPort, targetUrl, requestHeaders, changeOrigin, followRedirects, debugLogs, autoRestart, activeRulesSet } = req.body;
     
     if (proxyPort !== undefined) {
@@ -74,18 +75,26 @@ export function setupApiRoutes(pluginController, state) {
     if (activeRulesSet !== undefined) {
       state.activeRulesSet = activeRulesSet;
       console.log(`✓ Active rules set changed to: ${activeRulesSet}`);
-      
-      // Reload mock plugin configuration from the new active rule set
+
+      // Reload mock plugin configuration from MongoDB or file
       try {
-        const rulesPath = join(__dirname, '..', '..', 'rules', `${activeRulesSet}.json`);
-        if (existsSync(rulesPath)) {
-          const data = readFileSync(rulesPath, 'utf8');
-          const rules = JSON.parse(data);
-          pluginController.setPluginConfig('mock', rules);
-          console.log(`✓ Mock plugin reloaded with rules from ${activeRulesSet}.json`);
+        if (isDbConnected()) {
+          const doc = await col('rules').findOne({ _id: activeRulesSet });
+          if (doc) {
+            const { _id, ...rules } = doc;
+            pluginController.setPluginConfig('mock', rules);
+            console.log(`✓ Mock plugin reloaded with rules from MongoDB (${activeRulesSet})`);
+          }
+        } else {
+          const rulesPath = join(__dirname, '..', '..', 'rules', `${activeRulesSet}.json`);
+          if (existsSync(rulesPath)) {
+            const rules = JSON.parse(readFileSync(rulesPath, 'utf8'));
+            pluginController.setPluginConfig('mock', rules);
+            console.log(`✓ Mock plugin reloaded with rules from ${activeRulesSet}.json`);
+          }
         }
       } catch (err) {
-        console.error(`Failed to reload mock plugin config from ${activeRulesSet}.json:`, err.message);
+        console.error(`Failed to reload mock plugin config for "${activeRulesSet}":`, err.message);
       }
     }
     
