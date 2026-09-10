@@ -2,36 +2,46 @@ import express from 'express';
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { col, isDbConnected } from '../db.js';
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const __dirname  = dirname(__filename);
 
-const router = express.Router();
 const RULES_DIR = join(__dirname, '..', '..', 'rules');
 
-// Ensure rules directory exists
-if (!existsSync(RULES_DIR)) {
-  mkdirSync(RULES_DIR, { recursive: true });
+const DEFAULT_RULE_SET = {
+  rules: [],
+  fallback: 'PASS',
+  fallback_fallback: 'PASS',
+  recordingsFolder: 'active'
+};
+
+function ensureRulesDir() {
+  if (!existsSync(RULES_DIR)) mkdirSync(RULES_DIR, { recursive: true });
 }
 
-/**
- * Setup rules API routes
- * @param {Object} pluginController - Plugin controller instance
- * @param {Object} state - Server state object
- * @returns {Router} Express router
- */
+const router = express.Router();
+
 export function setupRulesRoutes(pluginController, state) {
-  // Get active rule set
-  router.get('/active', (req, res) => {
+
+  // ── GET /active ─────────────────────────────────────────────────────────────
+  router.get('/active', async (req, res) => {
     try {
       const activeRulesSet = state.activeRulesSet || 'active';
-      const activePath = join(RULES_DIR, `${activeRulesSet}.json`);
-      if (existsSync(activePath)) {
-        const data = readFileSync(activePath, 'utf8');
-        res.json(JSON.parse(data));
+
+      if (isDbConnected()) {
+        const doc = await col('rules').findOne({ _id: activeRulesSet });
+        if (doc) {
+          const { _id, ...ruleSet } = doc;
+          return res.json(ruleSet);
+        }
+        return res.json({ ...DEFAULT_RULE_SET });
       } else {
-        // Return default empty rule set
-        res.json({ rules: [], fallback: 'PASS', fallback_fallback: 'PASS', recordingsFolder: 'active' });
+        const filePath = join(RULES_DIR, `${activeRulesSet}.json`);
+        if (existsSync(filePath)) {
+          return res.json(JSON.parse(readFileSync(filePath, 'utf8')));
+        }
+        return res.json({ ...DEFAULT_RULE_SET });
       }
     } catch (err) {
       console.error('Error loading active rules:', err);
@@ -39,19 +49,25 @@ export function setupRulesRoutes(pluginController, state) {
     }
   });
 
-  // Save active rule set
+  // ── POST /active ─────────────────────────────────────────────────────────────
   router.post('/active', async (req, res) => {
     try {
       const activeRulesSet = state.activeRulesSet || 'active';
-      const activePath = join(RULES_DIR, `${activeRulesSet}.json`);
-      writeFileSync(activePath, JSON.stringify(req.body, null, 2), 'utf8');
-      
-      // Update plugin controller configuration dynamically (hot reload)
-      if (pluginController) {
-        pluginController.setPluginConfig('mock', req.body);
+
+      if (isDbConnected()) {
+        await col('rules').updateOne(
+          { _id: activeRulesSet },
+          { $set: { ...req.body } },
+          { upsert: true }
+        );
+        console.log(`✓ Rules saved to MongoDB (${activeRulesSet}) and applied`);
+      } else {
+        ensureRulesDir();
+        writeFileSync(join(RULES_DIR, `${activeRulesSet}.json`), JSON.stringify(req.body, null, 2), 'utf8');
+        console.log(`✓ Rules saved to ${activeRulesSet}.json and applied`);
       }
-      
-      console.log(`✓ Rules saved to ${activeRulesSet}.json and applied (no restart needed)`);
+
+      if (pluginController) pluginController.setPluginConfig('mock', req.body);
       res.json({ success: true, message: 'Active rules saved and applied' });
     } catch (err) {
       console.error('Error saving active rules:', err);
@@ -59,67 +75,85 @@ export function setupRulesRoutes(pluginController, state) {
     }
   });
 
-  // Get list of all saved rule sets
-  router.get('/sets', (req, res) => {
+  // ── GET /sets ────────────────────────────────────────────────────────────────
+  router.get('/sets', async (req, res) => {
     try {
-      const files = readdirSync(RULES_DIR)
-        .filter(f => f.endsWith('.json'))
-        .map(f => f.replace('.json', ''));
-      
-      // If no rule sets exist, create the default 'active' rule set
-      if (files.length === 0) {
-        const defaultRuleSet = { 
-          rules: [], 
-          fallback: 'PASS', 
-          fallback_fallback: 'PASS', 
-          recordingsFolder: 'active' 
-        };
-        const activePath = join(RULES_DIR, 'active.json');
-        writeFileSync(activePath, JSON.stringify(defaultRuleSet, null, 2), 'utf8');
-        console.log(`✓ Created default 'active' rule set`);
-        files.push('active');
+      if (isDbConnected()) {
+        const docs  = await col('rules').find({}, { projection: { _id: 1 } }).toArray();
+        let names   = docs.map(d => d._id);
+
+        if (names.length === 0) {
+          await col('rules').insertOne({ _id: 'active', ...DEFAULT_RULE_SET });
+          console.log(`✓ Created default 'active' rule set in MongoDB`);
+          names = ['active'];
+        }
+        return res.json({ sets: names });
+      } else {
+        ensureRulesDir();
+        let files = readdirSync(RULES_DIR)
+          .filter(f => f.endsWith('.json'))
+          .map(f => f.replace('.json', ''));
+
+        if (files.length === 0) {
+          writeFileSync(join(RULES_DIR, 'active.json'), JSON.stringify(DEFAULT_RULE_SET, null, 2), 'utf8');
+          console.log(`✓ Created default 'active' rule set`);
+          files = ['active'];
+        }
+        return res.json({ sets: files });
       }
-      
-      res.json({ sets: files });
     } catch (err) {
       console.error('Error listing rule sets:', err);
       res.status(500).json({ error: 'Failed to list rule sets' });
     }
   });
 
-  // Get specific rule set
-  router.get('/sets/:name', (req, res) => {
+  // ── GET /sets/:name ──────────────────────────────────────────────────────────
+  router.get('/sets/:name', async (req, res) => {
     try {
       const { name } = req.params;
-      const filePath = join(RULES_DIR, `${name}.json`);
-      if (existsSync(filePath)) {
-        const data = readFileSync(filePath, 'utf8');
-        res.json(JSON.parse(data));
+
+      if (isDbConnected()) {
+        const doc = await col('rules').findOne({ _id: name });
+        if (doc) {
+          const { _id, ...ruleSet } = doc;
+          return res.json(ruleSet);
+        }
       } else {
-        res.status(404).json({ error: 'Rule set not found' });
+        const filePath = join(RULES_DIR, `${name}.json`);
+        if (existsSync(filePath)) {
+          return res.json(JSON.parse(readFileSync(filePath, 'utf8')));
+        }
       }
+      res.status(404).json({ error: 'Rule set not found' });
     } catch (err) {
       console.error('Error loading rule set:', err);
       res.status(500).json({ error: 'Failed to load rule set' });
     }
   });
 
-  // Save rule set with custom name
-  router.post('/sets/:name', (req, res) => {
+  // ── POST /sets/:name ─────────────────────────────────────────────────────────
+  router.post('/sets/:name', async (req, res) => {
     try {
-      const { name } = req.params;
-      const filePath = join(RULES_DIR, `${name}.json`);
-      writeFileSync(filePath, JSON.stringify(req.body, null, 2), 'utf8');
-      
-      // If this is the currently active rule set, also update the plugin config
-      const activeRulesSet = state.activeRulesSet || 'active';
+      const { name }        = req.params;
+      const activeRulesSet  = state.activeRulesSet || 'active';
+
+      if (isDbConnected()) {
+        await col('rules').updateOne(
+          { _id: name },
+          { $set: { ...req.body } },
+          { upsert: true }
+        );
+        console.log(`✓ Rules saved to MongoDB (${name})${name === activeRulesSet ? ' and applied' : ''}`);
+      } else {
+        ensureRulesDir();
+        writeFileSync(join(RULES_DIR, `${name}.json`), JSON.stringify(req.body, null, 2), 'utf8');
+        console.log(`✓ Rules saved to ${name}.json${name === activeRulesSet ? ' and applied' : ''}`);
+      }
+
       if (name === activeRulesSet && pluginController) {
         pluginController.setPluginConfig('mock', req.body);
-        console.log(`✓ Rules saved to ${name}.json and applied (no restart needed)`);
-      } else {
-        console.log(`✓ Rules saved to ${name}.json`);
       }
-      
+
       res.json({ success: true, message: `Rule set "${name}" saved` });
     } catch (err) {
       console.error('Error saving rule set:', err);
